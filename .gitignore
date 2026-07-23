@@ -7,3 +7,4 @@
 
 # Debug screenshot output (main.gd --screenshot mode)
 tmp_screenshot.png
+tmp_screenshot.png.import
