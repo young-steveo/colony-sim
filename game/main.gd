@@ -11,7 +11,7 @@ const PAN_SPEED := 900.0
 # Camera zoom locked to steps where a 16px tile lands on whole screen pixels
 # (4, 8, 16, 32, 48, 64 px/tile) — crisp pixel art at every stop.
 const ZOOM_STEPS: Array[float] = [0.25, 0.5, 1.0, 2.0, 3.0, 4.0]
-const DEFAULT_ZOOM_IDX := 1
+const DEFAULT_ZOOM_IDX := 2
 
 var sim: Simulation
 var world_seed := 0

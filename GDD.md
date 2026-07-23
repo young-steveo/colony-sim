@@ -427,12 +427,14 @@ engineering-constitutional.
 ### Presentation
 2D top-down pixel art. **Color palette: Resurrect 64 by Kerrie Lake**
 (https://lospec.com/palette-list/resurrect-64) — codified in
-`render/palette.gd`; all rendered color draws from it. Grid: 16×16 tempting
-(tiny constraint), 32×32 the experienced fallback — note the tile size and the pawn size are separable
-decisions (16×16 terrain can carry larger/multi-cell pawns), and the Delightful
-Verb Principle wants readable, watchable pawns. **Art direction session
-pending.** Stephen does the pixel art (and is a musician — original music
-in-house is plausible); opengameart.org for free SFX as filler.
+`render/palette.gd`; all rendered color draws from it. **Grid: 16×16 tiles
+with 16×32 pawn sprites** (1 tile wide, 2 tall, feet-anchored at the sim
+position — Stardew proportion; decided July 2026 after a silhouette preview).
+Tall pawns will need Y-sorting once walls/overlap exist. Default camera zoom
+is 1.0 (16 screen px per tile). **Art direction session still pending** for
+style, ramps, and animation. Stephen does the pixel art (and is a musician —
+original music in-house is plausible); opengameart.org for free SFX as
+filler.
 
 ---
 
@@ -502,7 +504,8 @@ Failing 1–2 triggers the Delightful Verb kill criterion conversation.
 - Roles/policies/delegation design for large-colony management (find-the-fun
   at build time).
 - World map granularity and the travel/expedition model.
-- Grid size (16 vs 32) and pawn resolution — art direction session.
+- ~~Grid size and pawn resolution~~ — resolved: 16×16 tiles, 16×32 pawns
+  (see Presentation). Art style/ramps/animation still need their session.
 - Children/aging — later-roadmap candidate.
 - Taming/livestock — later.
 - Barter economy details (external trade); internal-economy activation point
