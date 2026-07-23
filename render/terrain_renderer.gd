@@ -7,12 +7,13 @@ extends Sprite2D
 
 const TILE_PX := 16
 
-# Indexed by tile id (SimWorld.TILE_*).
+# Palette indices by tile id (SimWorld.TILE_*): murky teal water, tan sand,
+# olive grass, grey-purple rock.
 static var COLORS := PackedColorArray([
-	Color(0.204, 0.329, 0.431),
-	Color(0.698, 0.624, 0.439),
-	Color(0.416, 0.478, 0.290),
-	Color(0.439, 0.416, 0.384),
+	Palette.COLORS[39],
+	Palette.COLORS[4],
+	Palette.COLORS[25],
+	Palette.COLORS[2],
 ])
 
 

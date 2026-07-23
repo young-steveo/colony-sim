@@ -40,6 +40,13 @@ func _grow(actors: ActorPool) -> void:
 		multimesh.set_instance_color(i, _actor_color(actors.ids[i]))
 
 
+# Vivid Palette entries that pop against terrain.
+static var ACTOR_TINTS := PackedInt32Array([
+	12, 13, 16, 17, 18, 22, 23, 26, 27, 31,
+	32, 41, 42, 47, 48, 51, 52, 56, 57, 60, 61, 62,
+])
+
+
 func _actor_color(id: int) -> Color:
 	var s := SimRng.stream(SimRng.key([_world_seed, "actor_color", id]))
-	return Color.from_hsv(s.nextf(), 0.35 + 0.3 * s.nextf(), 0.75 + 0.2 * s.nextf())
+	return Palette.COLORS[ACTOR_TINTS[s.next_range(0, ACTOR_TINTS.size() - 1)]]

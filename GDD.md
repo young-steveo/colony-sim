@@ -425,8 +425,10 @@ engineering-constitutional.
 - Desktop PC/Mac, keyboard/mouse-first.
 
 ### Presentation
-2D top-down pixel art. Grid: 16×16 tempting (tiny constraint), 32×32 the
-experienced fallback — note the tile size and the pawn size are separable
+2D top-down pixel art. **Color palette: Resurrect 64 by Kerrie Lake**
+(https://lospec.com/palette-list/resurrect-64) — codified in
+`render/palette.gd`; all rendered color draws from it. Grid: 16×16 tempting
+(tiny constraint), 32×32 the experienced fallback — note the tile size and the pawn size are separable
 decisions (16×16 terrain can carry larger/multi-cell pawns), and the Delightful
 Verb Principle wants readable, watchable pawns. **Art direction session
 pending.** Stephen does the pixel art (and is a musician — original music
