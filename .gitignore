@@ -1,3 +1,9 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# OS noise
+.DS_Store
+
+# Debug screenshot output (main.gd --screenshot mode)
+tmp_screenshot.png
