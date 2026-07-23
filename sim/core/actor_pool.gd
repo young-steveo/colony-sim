@@ -24,12 +24,12 @@ var _spawned_total := 0
 
 
 func spawn(world: SimWorld, n: int) -> void:
-	for j in n:
+	for j: int in n:
 		var id := _spawned_total
 		_spawned_total += 1
 		var s := SimRng.stream(SimRng.key([world.world_seed, "spawn", id]))
 		var pos := Vector2(world.width * 0.5, world.height * 0.5)
-		for attempt in 64:
+		for attempt: int in 64:
 			var x := s.next_range(0, world.width - 1)
 			var y := s.next_range(0, world.height - 1)
 			if world.is_walkable(x, y):
@@ -45,7 +45,7 @@ func spawn(world: SimWorld, n: int) -> void:
 
 
 func tick(world: SimWorld, dt: float) -> void:
-	for i in count:
+	for i: int in count:
 		var pos := positions[i]
 		prev_positions[i] = pos
 		var to_target := targets[i] - pos
@@ -62,7 +62,7 @@ func _pick_target(world: SimWorld, i: int, pos: Vector2) -> Vector2:
 	var s := SimRng.stream(
 		SimRng.key([world.world_seed, "wander", ids[i], wander_counts[i]])
 	)
-	for attempt in 16:
+	for attempt: int in 16:
 		var angle := s.nextf() * TAU
 		var radius := 1.0 + s.nextf() * WANDER_RADIUS
 		var t := pos + Vector2.from_angle(angle) * radius

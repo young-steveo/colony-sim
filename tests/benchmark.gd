@@ -15,10 +15,10 @@ func _init() -> void:
 	for n: int in COUNTS:
 		var sim := Simulation.new(42)
 		sim.actors.spawn(sim.world, n)
-		for t in WARMUP_TICKS:
+		for t: int in WARMUP_TICKS:
 			sim.tick()
 		var t0 := Time.get_ticks_usec()
-		for t in MEASURED_TICKS:
+		for t: int in MEASURED_TICKS:
 			sim.tick()
 		var ms := float(Time.get_ticks_usec() - t0) / 1000.0 / MEASURED_TICKS
 		print("%6d | %7.3f | %5.1f%%" % [n, ms, ms / 33.333 * 100.0])

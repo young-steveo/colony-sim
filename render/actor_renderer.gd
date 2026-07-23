@@ -27,7 +27,7 @@ func sync(actors: ActorPool, alpha: float) -> void:
 		_grow(actors)
 	multimesh.visible_instance_count = actors.count
 	var px := float(TerrainRenderer.TILE_PX)
-	for i in actors.count:
+	for i: int in actors.count:
 		var p := actors.prev_positions[i].lerp(actors.positions[i], alpha) * px
 		multimesh.set_instance_transform_2d(i, Transform2D(0.0, p))
 
@@ -36,7 +36,7 @@ func _grow(actors: ActorPool) -> void:
 	# Resizing instance_count clears instance data, so recolor everything.
 	_capacity = maxi(actors.count, maxi(_capacity * 2, 256))
 	multimesh.instance_count = _capacity
-	for i in actors.count:
+	for i: int in actors.count:
 		multimesh.set_instance_color(i, _actor_color(actors.ids[i]))
 
 

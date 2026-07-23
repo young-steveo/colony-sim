@@ -7,12 +7,13 @@ extends Sprite2D
 
 const TILE_PX := 16
 
-const COLORS := {
-	SimWorld.TILE_WATER: Color8(52, 84, 110),
-	SimWorld.TILE_SAND: Color8(178, 159, 112),
-	SimWorld.TILE_GRASS: Color8(106, 122, 74),
-	SimWorld.TILE_ROCK: Color8(112, 106, 98),
-}
+# Indexed by tile id (SimWorld.TILE_*).
+static var COLORS := PackedColorArray([
+	Color(0.204, 0.329, 0.431),
+	Color(0.698, 0.624, 0.439),
+	Color(0.416, 0.478, 0.290),
+	Color(0.439, 0.416, 0.384),
+])
 
 
 func build(world: SimWorld) -> void:
@@ -21,9 +22,9 @@ func build(world: SimWorld) -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var shade_key := SimRng.key([world.world_seed, "tile_shade"])
 	var img := Image.create(world.width, world.height, false, Image.FORMAT_RGB8)
-	for y in world.height:
-		for x in world.width:
-			var c: Color = COLORS[world.tile_at(x, y)]
+	for y: int in world.height:
+		for x: int in world.width:
+			var c := COLORS[world.tile_at(x, y)]
 			var k := SimRng.combine(SimRng.combine(shade_key, x), y)
 			var shade := 0.92 + 0.16 * SimRng.randf(k)
 			img.set_pixel(x, y, Color(c.r * shade, c.g * shade, c.b * shade))

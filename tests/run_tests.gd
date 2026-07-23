@@ -41,7 +41,7 @@ func _test_rng() -> void:
 	var total := 0.0
 	var lo := 1.0
 	var hi := 0.0
-	for i in 1000:
+	for i: int in 1000:
 		var f := SimRng.randf(SimRng.key([99, "dist", i]))
 		total += f
 		lo = minf(lo, f)
@@ -52,7 +52,7 @@ func _test_rng() -> void:
 
 	var seen := {}
 	var in_bounds := true
-	for i in 1000:
+	for i: int in 1000:
 		var v := SimRng.randi_range(SimRng.key([99, "range", i]), 3, 7)
 		if v < 3 or v > 7:
 			in_bounds = false
@@ -65,7 +65,7 @@ func _test_rng() -> void:
 	var s3 := SimRng.stream(SimRng.key([5, "s"]), 1)
 	var same := true
 	var independent := false
-	for i in 10:
+	for i: int in 10:
 		var a := s1.next()
 		if a != s2.next():
 			same = false
@@ -85,7 +85,7 @@ func _test_map_gen() -> void:
 
 	var valid := true
 	var walkable := 0
-	for t in a:
+	for t: int in a:
 		if t < SimWorld.TILE_WATER or t > SimWorld.TILE_ROCK:
 			valid = false
 		if t == SimWorld.TILE_SAND or t == SimWorld.TILE_GRASS:
@@ -103,13 +103,13 @@ func _test_simulation() -> void:
 
 	var spawn_positions := sim_a.actors.positions.duplicate()
 	var all_walkable := true
-	for i in sim_a.actors.count:
+	for i: int in sim_a.actors.count:
 		var p := sim_a.actors.positions[i]
 		if not sim_a.world.is_walkable(floori(p.x), floori(p.y)):
 			all_walkable = false
 	_check(all_walkable, "actors spawn on walkable tiles")
 
-	for t in 200:
+	for t: int in 200:
 		sim_a.tick()
 		sim_b.tick()
 

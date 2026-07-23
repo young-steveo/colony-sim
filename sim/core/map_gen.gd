@@ -15,11 +15,11 @@ const THRESHOLD_GRASS := 0.72
 
 static func generate(world_seed: int, width: int, height: int) -> PackedByteArray:
 	var tiles := PackedByteArray()
-	tiles.resize(width * height)
+	var _err: int = tiles.resize(width * height)
 	var terrain_key := SimRng.key([world_seed, "terrain"])
-	for y in height:
+	for y: int in height:
 		var row := y * width
-		for x in width:
+		for x: int in width:
 			var e := _fbm(terrain_key, float(x), float(y))
 			tiles[row + x] = _tile_for(e)
 	return tiles
@@ -40,7 +40,7 @@ static func _fbm(terrain_key: int, x: float, y: float) -> float:
 	var amplitude := 1.0
 	var frequency := BASE_FREQUENCY
 	var norm := 0.0
-	for octave in OCTAVES:
+	for octave: int in OCTAVES:
 		total += amplitude * _value_noise(terrain_key, octave, x * frequency, y * frequency)
 		norm += amplitude
 		amplitude *= 0.5

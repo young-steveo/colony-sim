@@ -1,19 +1,23 @@
 extends Node2D
 ## Game layer: owns the fixed-timestep loop, time controls, camera, input,
 ## and telemetry. This is the only place wall-clock time exists; the sim
-## just gets tick() called on it.
-##
-## Controls: [Space] pause  [1/2/3] speed  [F] +100 actors  [N] new seed
-##           [R] regen same seed  [WASD/arrows] pan  [wheel] zoom
+## just gets tick() called on it. All inputs are named InputMap actions
+## (see project.godot) — no hardcoded keycodes.
 
-const SPEEDS := [1.0, 3.0, 6.0]
+const SPEEDS: Array[float] = [1.0, 3.0, 6.0]
 const MAX_TICKS_PER_FRAME := 12
 const PAN_SPEED := 900.0
+
+# Camera zoom locked to steps where a 16px tile lands on whole screen pixels
+# (4, 8, 16, 32, 48, 64 px/tile) — crisp pixel art at every stop.
+const ZOOM_STEPS: Array[float] = [0.25, 0.5, 1.0, 2.0, 3.0, 4.0]
+const DEFAULT_ZOOM_IDX := 1
 
 var sim: Simulation
 var world_seed := 0
 var sim_paused := false
 var speed_idx := 0
+var zoom_idx := DEFAULT_ZOOM_IDX
 var accumulator := 0.0
 var avg_tick_ms := 0.0
 
@@ -30,7 +34,7 @@ func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	_screenshot_mode = "--screenshot" in args
 	var start_seed := int(Time.get_unix_time_from_system()) if not _screenshot_mode else 12345
-	for a in args:
+	for a: String in args:
 		if a.begins_with("--seed="):
 			start_seed = int(a.trim_prefix("--seed="))
 
@@ -70,7 +74,8 @@ func _start(seed_value: int) -> void:
 
 	var map_px := Vector2(sim.world.width, sim.world.height) * TerrainRenderer.TILE_PX
 	cam.position = map_px * 0.5
-	cam.zoom = Vector2(0.4, 0.4)
+	zoom_idx = DEFAULT_ZOOM_IDX
+	cam.zoom = Vector2.ONE * ZOOM_STEPS[zoom_idx]
 
 
 func _process(delta: float) -> void:
@@ -96,52 +101,46 @@ func _process(delta: float) -> void:
 	if _screenshot_mode:
 		_frame += 1
 		if _frame == 90:
-			get_viewport().get_texture().get_image().save_png("res://tmp_screenshot.png")
+			var _err: int = get_viewport().get_texture().get_image().save_png("res://tmp_screenshot.png")
 			get_tree().quit()
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo:
-		match event.keycode:
-			KEY_SPACE:
-				sim_paused = not sim_paused
-			KEY_1:
-				speed_idx = 0
-			KEY_2:
-				speed_idx = 1
-			KEY_3:
-				speed_idx = 2
-			KEY_F:
-				sim.actors.spawn(sim.world, 100)
-			KEY_N:
-				_start(randi())
-			KEY_R:
-				_start(world_seed)
-	elif event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			cam.zoom = (cam.zoom * 1.15).clampf(0.1, 8.0)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			cam.zoom = (cam.zoom / 1.15).clampf(0.1, 8.0)
+	if event.is_action_pressed("sim_pause"):
+		sim_paused = not sim_paused
+	elif event.is_action_pressed("sim_speed_1"):
+		speed_idx = 0
+	elif event.is_action_pressed("sim_speed_2"):
+		speed_idx = 1
+	elif event.is_action_pressed("sim_speed_3"):
+		speed_idx = 2
+	elif event.is_action_pressed("debug_spawn"):
+		sim.actors.spawn(sim.world, 100)
+	elif event.is_action_pressed("debug_new_seed"):
+		_start(randi())
+	elif event.is_action_pressed("debug_regen"):
+		_start(world_seed)
+	elif event.is_action_pressed("zoom_in"):
+		_zoom(1)
+	elif event.is_action_pressed("zoom_out"):
+		_zoom(-1)
+
+
+func _zoom(direction: int) -> void:
+	zoom_idx = clampi(zoom_idx + direction, 0, ZOOM_STEPS.size() - 1)
+	cam.zoom = Vector2.ONE * ZOOM_STEPS[zoom_idx]
 
 
 func _pan_camera(delta: float) -> void:
-	var dir := Vector2.ZERO
-	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
-		dir.y -= 1
-	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
-		dir.y += 1
-	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
-		dir.x -= 1
-	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
-		dir.x += 1
+	var dir := Input.get_vector("pan_left", "pan_right", "pan_up", "pan_down")
 	cam.position += dir * PAN_SPEED * delta / cam.zoom.x
 
 
 func _update_hud() -> void:
 	var speed_text := "paused" if sim_paused else "%dx" % int(SPEEDS[speed_idx])
 	hud.text = (
-		"seed %d | actors %d | speed %s | fps %d | sim tick %.2f ms | tick %d\n" % [
-			world_seed, sim.actors.count, speed_text,
+		"seed %d | actors %d | speed %s | zoom %s | fps %d | sim tick %.2f ms | tick %d\n" % [
+			world_seed, sim.actors.count, speed_text, str(ZOOM_STEPS[zoom_idx]),
 			Engine.get_frames_per_second(), avg_tick_ms, sim.tick_count,
 		]
 		+ "[Space] pause  [1/2/3] speed  [F] +100 actors  [N] new seed  [R] regen  [WASD] pan  [wheel] zoom"

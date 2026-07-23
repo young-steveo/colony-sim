@@ -42,7 +42,7 @@ static func combine(a: int, b: int) -> int:
 
 static func _fnv1a(s: String) -> int:
 	var h := _FNV_OFFSET
-	for b in s.to_utf8_buffer():
+	for b: int in s.to_utf8_buffer():
 		h = (h ^ b) * _FNV_PRIME
 	return h
 
@@ -50,9 +50,9 @@ static func _fnv1a(s: String) -> int:
 static func _hash_part(p: Variant) -> int:
 	match typeof(p):
 		TYPE_INT:
-			return p
+			return int(p)
 		TYPE_STRING:
-			return _fnv1a(p)
+			return _fnv1a(str(p))
 		_:
 			# Floats are banned as context keys (precision drift breaks
 			# determinism); anything else is almost certainly a mistake.
@@ -68,7 +68,7 @@ static func key(parts: Array) -> int:
 ## Extend an existing key with more context (cheaper than rebuilding).
 static func derive(base: int, parts: Array) -> int:
 	var h := base
-	for p in parts:
+	for p: Variant in parts:
 		h = combine(h, _hash_part(p))
 	return h
 
