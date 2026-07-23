@@ -17,6 +17,8 @@ var sim: Simulation
 var world_seed := 0
 var sim_paused := false
 var speed_idx := 0
+var default_zoom_idx := DEFAULT_ZOOM_IDX
+var start_actors := 100
 var zoom_idx := DEFAULT_ZOOM_IDX
 var accumulator := 0.0
 var avg_tick_ms := 0.0
@@ -37,6 +39,12 @@ func _ready() -> void:
 	for a: String in args:
 		if a.begins_with("--seed="):
 			start_seed = int(a.trim_prefix("--seed="))
+		elif a.begins_with("--zoom="):
+			var idx := ZOOM_STEPS.find(a.trim_prefix("--zoom=").to_float())
+			if idx >= 0:
+				default_zoom_idx = idx
+		elif a.begins_with("--actors="):
+			start_actors = maxi(1, int(a.trim_prefix("--actors=")))
 
 	cam = Camera2D.new()
 	add_child(cam)
@@ -57,7 +65,7 @@ func _ready() -> void:
 func _start(seed_value: int) -> void:
 	world_seed = seed_value
 	sim = Simulation.new(world_seed)
-	sim.actors.spawn(sim.world, 100)
+	sim.actors.spawn(sim.world, start_actors)
 	accumulator = 0.0
 	avg_tick_ms = 0.0
 
@@ -74,7 +82,7 @@ func _start(seed_value: int) -> void:
 
 	var map_px := Vector2(sim.world.width, sim.world.height) * TerrainRenderer.TILE_PX
 	cam.position = map_px * 0.5
-	zoom_idx = DEFAULT_ZOOM_IDX
+	zoom_idx = default_zoom_idx
 	cam.zoom = Vector2.ONE * ZOOM_STEPS[zoom_idx]
 
 

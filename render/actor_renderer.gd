@@ -4,7 +4,9 @@ extends MultiMeshInstance2D
 ## per-actor nodes. Positions interpolate between the last two sim ticks so
 ## movement stays smooth regardless of sim tick rate.
 
-const ACTOR_PX := 10.0
+# Character proportion experiment: 1 tile wide, 2 tall (16x32 on the 16px
+# grid), anchored at the feet — the sim position is ground contact.
+const ACTOR_SIZE := Vector2(16.0, 32.0)
 
 var _capacity := 0
 var _world_seed := 0
@@ -17,7 +19,7 @@ func setup(world_seed: int) -> void:
 	multimesh.transform_format = MultiMesh.TRANSFORM_2D
 	multimesh.use_colors = true
 	var quad := QuadMesh.new()
-	quad.size = Vector2(ACTOR_PX, ACTOR_PX)
+	quad.size = ACTOR_SIZE
 	multimesh.mesh = quad
 	_capacity = 0
 
@@ -27,9 +29,10 @@ func sync(actors: ActorPool, alpha: float) -> void:
 		_grow(actors)
 	multimesh.visible_instance_count = actors.count
 	var px := float(TerrainRenderer.TILE_PX)
+	var feet_offset := Vector2(0.0, -ACTOR_SIZE.y * 0.5)
 	for i: int in actors.count:
 		var p := actors.prev_positions[i].lerp(actors.positions[i], alpha) * px
-		multimesh.set_instance_transform_2d(i, Transform2D(0.0, p))
+		multimesh.set_instance_transform_2d(i, Transform2D(0.0, p + feet_offset))
 
 
 func _grow(actors: ActorPool) -> void:
