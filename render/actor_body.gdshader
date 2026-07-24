@@ -20,5 +20,8 @@ void vertex() {
 
 void fragment() {
 	vec2 uv = clamp(UV, v_origin + HALF_TEXEL, v_origin + CELL - HALF_TEXEL);
-	COLOR *= texture(TEXTURE, uv);
+	// Plain assignment: COLOR already arrives with the texture sample baked
+	// in, so multiplying texture() in again squares the values (darkened,
+	// oversaturated sprites — found the hard way).
+	COLOR = texture(TEXTURE, uv);
 }
