@@ -124,6 +124,10 @@ func tick(ctx: AiContext, dt: float) -> void:
 				_tick_eat(ctx, i, action, dt)
 			&"sleep":
 				_tick_sleep(ctx, i, action, dt)
+			&"sleep_bed":
+				_tick_sleep_bed(ctx, i, action, dt)
+			&"build":
+				_tick_build(ctx, i, dt)
 			&"wander":
 				_tick_wander(ctx, i, dt)
 
@@ -170,15 +174,25 @@ func _input_value(ctx: AiContext, i: int, con: AiDefs.ConsiderationDef) -> float
 		return needs[con.need_idx][i]
 	match con.input:
 		&"food_distance":
-			if ctx.food_field == null:
-				return INF
-			var pos := positions[i]
-			var dist := ctx.food_field.distances[_cell_of(ctx.world, pos)]
-			if dist == FlowField.UNREACHABLE:
-				return INF
-			return float(dist) / float(FlowField.COST_ORTH)
+			return _field_distance(ctx, i, ctx.food_field)
+		&"bed_distance":
+			return _field_distance(ctx, i, ctx.bed_field)
+		&"blueprint_distance":
+			return _field_distance(ctx, i, ctx.blueprint_field)
 	assert(false, "ActorPool: unhandled input '%s'" % con.input)
 	return 0.0
+
+
+## Path distance (in tiles) to the nearest goal of a shared field; INF when
+## no field exists or the goals are unreachable from here — the
+## normalization window maps INF to 1.0, where a b+m=0 curve vetoes.
+func _field_distance(ctx: AiContext, i: int, field: FlowField) -> float:
+	if field == null:
+		return INF
+	var dist := field.distances[_cell_of(ctx.world, positions[i])]
+	if dist == FlowField.UNREACHABLE:
+		return INF
+	return float(dist) / float(FlowField.COST_ORTH)
 
 
 func _start_action(ctx: AiContext, i: int, action_idx: int) -> void:
@@ -233,7 +247,55 @@ func _tick_sleep(_ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -
 		_complete(i)
 
 
-func _tick_wander(_ctx: AiContext, i: int, dt: float) -> void:
+func _tick_sleep_bed(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> void:
+	var cell := _cell_of(ctx.world, positions[i])
+	if ctx.world.structure_at_cell(cell) == SimWorld.STRUCT_BED:
+		var rest_idx := action.considerations[0].need_idx
+		needs[rest_idx][i] = minf(needs[rest_idx][i] + action.restore_per_second * dt, 1.0)
+		if needs[rest_idx][i] >= action.wake_threshold:
+			_complete(i)
+		return
+	if ctx.bed_field == null or not _follow_field(ctx, i, ctx.bed_field, dt):
+		_complete(i)
+
+
+func _tick_build(ctx: AiContext, i: int, dt: float) -> void:
+	var cell := _cell_of(ctx.world, positions[i])
+	if ctx.blueprints.has_at(cell):
+		var built := ctx.blueprints.add_work(cell, dt)
+		if built != SimWorld.STRUCT_NONE:
+			ctx.world.set_structure(cell, built)
+			if built == SimWorld.STRUCT_WALL:
+				_displace_from(ctx.world, cell)
+			_complete(i)
+		return
+	if ctx.blueprint_field == null or not _follow_field(ctx, i, ctx.blueprint_field, dt):
+		_complete(i)
+
+
+## A blocking structure just appeared at this cell: move any pawns standing
+## in it to the nearest walkable neighbor (deterministic scan order).
+func _displace_from(world: SimWorld, cell: int) -> void:
+	@warning_ignore("integer_division")
+	var cy := cell / world.width
+	var cx := cell % world.width
+	for i: int in count:
+		if _cell_of(world, positions[i]) != cell:
+			continue
+		for d: int in 8:
+			var nx := cx + FlowField.DX[d]
+			var ny := cy + FlowField.DY[d]
+			if world.is_walkable(nx, ny):
+				positions[i] = Vector2(nx + 0.5, ny + 0.5) + jitter[i]
+				prev_positions[i] = positions[i]
+				_complete(i)
+				break
+
+
+func _tick_wander(ctx: AiContext, i: int, dt: float) -> void:
+	if not ctx.world.is_walkable(floori(targets[i].x), floori(targets[i].y)):
+		_complete(i)
+		return
 	if _move_toward_target(i, speeds[i] * dt):
 		_complete(i)
 
@@ -249,14 +311,24 @@ func _follow_field(ctx: AiContext, i: int, field: FlowField, dt: float) -> bool:
 	var advances := 0
 	while advances < 3:
 		var pos := positions[i]
+		# The target cell may have been walled since it was chosen (fields
+		# rebuild on a delay) — never keep walking into it.
+		if not ctx.world.is_walkable(floori(targets[i].x), floori(targets[i].y)):
+			targets[i] = pos
+			return false
 		var to_target := targets[i] - pos
 		var dist := to_target.length()
 		if dist <= ARRIVE_DISTANCE:
 			var dir := field.direction_at_cell(_cell_of(ctx.world, pos))
 			if dir == Vector2i.ZERO:
 				return false
-			var next := Vector2(floori(pos.x) + dir.x, floori(pos.y) + dir.y)
-			targets[i] = next + Vector2(0.5, 0.5) + jitter[i]
+			var nx := floori(pos.x) + dir.x
+			var ny := floori(pos.y) + dir.y
+			# Fields rebuild on a delay; a wall may have appeared on the
+			# route since. Repath rather than walk into it.
+			if not ctx.world.is_walkable(nx, ny):
+				return false
+			targets[i] = Vector2(nx, ny) + Vector2(0.5, 0.5) + jitter[i]
 			advances += 1
 			continue
 		if remaining <= 0.0:

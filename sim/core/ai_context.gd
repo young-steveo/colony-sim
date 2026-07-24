@@ -8,6 +8,9 @@ extends RefCounted
 var defs: AiDefs
 var world: SimWorld
 var bushes: Bushes
+var blueprints: Blueprints
 var food_field: FlowField
+var bed_field: FlowField
+var blueprint_field: FlowField
 var command_field: FlowField
 var tick := 0

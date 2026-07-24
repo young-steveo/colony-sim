@@ -23,10 +23,18 @@ var zoom_idx := DEFAULT_ZOOM_IDX
 var accumulator := 0.0
 var avg_tick_ms := 0.0
 
+const BUILD_TOOLS: Array[int] = [
+	SimWorld.STRUCT_NONE, SimWorld.STRUCT_WALL, SimWorld.STRUCT_DOOR, SimWorld.STRUCT_BED,
+]
+const BUILD_TOOL_NAMES: Array[String] = ["off", "wall", "door", "bed"]
+
 var terrain: TerrainRenderer
 var actor_renderer: ActorRenderer
 var bush_renderer: BushRenderer
+var structure_renderer: StructureRenderer
 var field_overlay: FieldDebugRenderer
+var build_tool_idx := 0
+var _last_paint_cell := -1
 var show_field := false
 var rally_marker: Sprite2D
 var selection_ring: Sprite2D
@@ -83,6 +91,8 @@ func _ready() -> void:
 	if _rally_arg.contains(","):
 		var parts := _rally_arg.split(",")
 		_rally(int(parts[0]), int(parts[1]))
+	if "--house" in args:
+		_place_demo_house()
 	for t: int in _warmup_ticks:
 		sim.tick()
 	if "--inspect" in args and sim.actors.count > 0:
@@ -107,15 +117,21 @@ func _start(seed_value: int) -> void:
 		rally_marker.queue_free()
 	if bush_renderer:
 		bush_renderer.queue_free()
+	if structure_renderer:
+		structure_renderer.queue_free()
 	if selection_ring:
 		selection_ring.queue_free()
 	selected_id = -1
+	build_tool_idx = 0
 	terrain = TerrainRenderer.new()
 	add_child(terrain)
 	terrain.build(sim.world)
 	bush_renderer = BushRenderer.new()
 	add_child(bush_renderer)
 	bush_renderer.setup(sim.world, sim.bushes)
+	structure_renderer = StructureRenderer.new()
+	add_child(structure_renderer)
+	structure_renderer.setup()
 	field_overlay = FieldDebugRenderer.new()
 	add_child(field_overlay)
 	selection_ring = Sprite2D.new()
@@ -165,6 +181,7 @@ func _process(delta: float) -> void:
 	var alpha := clampf(accumulator / Simulation.TICK_DT, 0.0, 1.0)
 	actor_renderer.sync(sim.actors, alpha)
 	bush_renderer.sync(sim.bushes)
+	structure_renderer.sync(sim.world, sim.blueprints)
 	_pan_camera(delta)
 	_update_hud()
 	_update_selection()
@@ -191,6 +208,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		_start(randi())
 	elif event.is_action_pressed("debug_regen"):
 		_start(world_seed)
+	elif event.is_action_pressed("build_tool"):
+		build_tool_idx = (build_tool_idx + 1) % BUILD_TOOLS.size()
+		_last_paint_cell = -1
 	elif event.is_action_pressed("debug_field"):
 		show_field = not show_field
 		_apply_field_overlay()
@@ -199,17 +219,44 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("zoom_out"):
 		_zoom(-1)
 	else:
-		var mb := event as InputEventMouseButton
-		if mb and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
-			var tile_pos := get_global_mouse_position() / TerrainRenderer.TILE_PX
-			var picked := _pick_pawn(tile_pos)
-			if picked >= 0:
-				selected_id = sim.actors.ids[picked]
-			elif mb.shift_pressed:
-				# Debug verb: rally everyone to the clicked tile.
-				_rally(floori(tile_pos.x), floori(tile_pos.y))
-			else:
-				selected_id = -1
+		_handle_mouse(event)
+
+
+func _handle_mouse(event: InputEvent) -> void:
+	var tile_pos := get_global_mouse_position() / TerrainRenderer.TILE_PX
+	var mb := event as InputEventMouseButton
+	if mb and mb.pressed:
+		if build_tool_idx > 0:
+			if mb.button_index == MOUSE_BUTTON_LEFT:
+				_paint_blueprint(tile_pos)
+			elif mb.button_index == MOUSE_BUTTON_RIGHT:
+				var _c: bool = sim.cancel_blueprint(floori(tile_pos.x), floori(tile_pos.y))
+			return
+		if mb.button_index != MOUSE_BUTTON_LEFT:
+			return
+		var picked := _pick_pawn(tile_pos)
+		if picked >= 0:
+			selected_id = sim.actors.ids[picked]
+		elif mb.shift_pressed:
+			# Debug verb: rally everyone to the clicked tile.
+			_rally(floori(tile_pos.x), floori(tile_pos.y))
+		else:
+			selected_id = -1
+		return
+	# Drag-paint while the left button is held with a tool active.
+	var motion := event as InputEventMouseMotion
+	if motion and build_tool_idx > 0 and motion.button_mask & MOUSE_BUTTON_MASK_LEFT:
+		_paint_blueprint(tile_pos)
+
+
+func _paint_blueprint(tile_pos: Vector2) -> void:
+	var x := floori(tile_pos.x)
+	var y := floori(tile_pos.y)
+	var cell := y * sim.world.width + x
+	if cell == _last_paint_cell:
+		return
+	_last_paint_cell = cell
+	var _placed: bool = sim.place_blueprint(x, y, BUILD_TOOLS[build_tool_idx])
 
 
 ## Nearest pawn within ~a tile of the click, or -1.
@@ -222,6 +269,38 @@ func _pick_pawn(tile_pos: Vector2) -> int:
 			best_dist = d
 			best = i
 	return best
+
+
+## Debug: paint an 8x6 house (walls, door, two beds) at the first fully
+## walkable rect scanning out from the map center, and aim the camera at it.
+func _place_demo_house() -> void:
+	var w := sim.world
+	@warning_ignore("integer_division")
+	var start_y := w.height / 2 - 3
+	@warning_ignore("integer_division")
+	var start_x := w.width / 2 - 4
+	for y: int in range(start_y, w.height - 8):
+		for x: int in range(start_x, w.width - 10):
+			var clear := true
+			for dy: int in 6:
+				for dx: int in 8:
+					if not w.is_walkable(x + dx, y + dy):
+						clear = false
+			if not clear:
+				continue
+			for dx: int in 8:
+				for dy: int in 6:
+					var edge := dx == 0 or dy == 0 or dx == 7 or dy == 5
+					if not edge:
+						continue
+					if dx == 3 and dy == 5:
+						var _d: bool = sim.place_blueprint(x + dx, y + dy, SimWorld.STRUCT_DOOR)
+					else:
+						var _w: bool = sim.place_blueprint(x + dx, y + dy, SimWorld.STRUCT_WALL)
+			var _b1: bool = sim.place_blueprint(x + 2, y + 2, SimWorld.STRUCT_BED)
+			var _b2: bool = sim.place_blueprint(x + 5, y + 2, SimWorld.STRUCT_BED)
+			cam.position = Vector2(x + 4, y + 3) * TerrainRenderer.TILE_PX
+			return
 
 
 func _rally(x: int, y: int) -> void:
@@ -254,12 +333,14 @@ func _update_hud() -> void:
 	for i: int in sim.actors.count:
 		if sim.actors.responding[i] == 1:
 			responding += 1
+	var build_text := BUILD_TOOL_NAMES[build_tool_idx]
 	hud.text = (
-		"seed %d | actors %d (%d rallying) | speed %s | zoom %s | fps %d | sim tick %.2f ms | tick %d\n" % [
-			world_seed, sim.actors.count, responding, speed_text, str(ZOOM_STEPS[zoom_idx]),
+		"seed %d | actors %d (%d rallying) | build: %s | bp %d | speed %s | zoom %s | fps %d | sim tick %.2f ms | tick %d\n" % [
+			world_seed, sim.actors.count, responding, build_text, sim.blueprints.cells.size(),
+			speed_text, str(ZOOM_STEPS[zoom_idx]),
 			Engine.get_frames_per_second(), avg_tick_ms, sim.tick_count,
 		]
-		+ "[click] inspect pawn  [shift+click] rally (debug)  [Space] pause  [1/2/3] speed  [F] +100 actors  [G] field overlay  [N] new seed  [R] regen  [WASD] pan  [wheel] zoom"
+		+ "[B] build tool (paint LMB, cancel RMB)  [click] inspect pawn  [shift+click] rally  [Space] pause  [1/2/3] speed  [F] +100 actors  [G] field overlay  [N] new seed  [R] regen  [WASD] pan  [wheel] zoom"
 	)
 
 

@@ -12,6 +12,7 @@ func _init() -> void:
 	_test_map_gen()
 	_test_flow_field()
 	_test_ai()
+	_test_building()
 	_test_simulation()
 	print("")
 	print("%d passed, %d failed" % [_passes, _failures])
@@ -155,9 +156,9 @@ func _test_ai() -> void:
 	print("AI:")
 	var defs := AiDefs.load_file(Simulation.AI_DEFS_PATH)
 	_check(defs.needs.size() == 3, "three needs load (hunger, rest, safety)")
-	_check(defs.actions.size() == 3, "three actions load (eat, sleep, wander)")
+	_check(defs.actions.size() == 5, "five actions load (eat, sleeps, build, wander)")
 	_check(defs.need_index(&"hunger") >= 0, "need_index resolves hunger")
-	var expected_buckets: Array[int] = [1, 0]
+	var expected_buckets: Array[int] = [2, 1, 0]
 	_check(defs.bucket_order == expected_buckets, "buckets ordered high to low")
 
 	# Pinned compensation values (ported from The Final Archive's tests).
@@ -187,7 +188,7 @@ func _test_ai() -> void:
 	var ate := false
 	var slept := false
 	var prev_rest := sim.actors.needs[rest_idx].duplicate()
-	for t: int in 2400:
+	for t: int in 3600:
 		sim.tick()
 		if t % 20 == 0:
 			for i: int in sim.actors.count:
@@ -210,6 +211,93 @@ func _test_ai() -> void:
 		if v > 0.0:
 			scored = true
 	_check(scored, "last_scores populated for inspection")
+
+
+func _test_building() -> void:
+	print("Building:")
+	var sim_a := Simulation.new(11, 96, 96)
+	var sim_b := Simulation.new(11, 96, 96)
+
+	# Find a fully walkable 6x5 rect for a tiny house.
+	var ox := -1
+	var oy := -1
+	for y: int in range(2, 90):
+		for x: int in range(2, 90):
+			var clear := true
+			for dy: int in 5:
+				for dx: int in 6:
+					if not sim_a.world.is_walkable(x + dx, y + dy):
+						clear = false
+			if clear:
+				ox = x
+				oy = y
+				break
+		if oy >= 0:
+			break
+	_check(ox >= 0, "found a walkable house site")
+
+	# Perimeter walls with one door, a bed inside — placed on both sims.
+	var sims: Array[Simulation] = [sim_a, sim_b]
+	var wall_count := 0
+	for s: Simulation in sims:
+		wall_count = 0
+		for dx: int in 6:
+			for dy: int in 5:
+				var edge := dx == 0 or dy == 0 or dx == 5 or dy == 4
+				if not edge:
+					continue
+				if dx == 2 and dy == 4:
+					var _d: bool = s.place_blueprint(ox + dx, oy + dy, SimWorld.STRUCT_DOOR)
+				else:
+					var placed: bool = s.place_blueprint(ox + dx, oy + dy, SimWorld.STRUCT_WALL)
+					if placed:
+						wall_count += 1
+		var _b: bool = s.place_blueprint(ox + 2, oy + 2, SimWorld.STRUCT_BED)
+		s.spawn_actors(10)
+	_check(wall_count > 10, "perimeter wall blueprints placed (%d)" % wall_count)
+	_check(sim_a.blueprints.cells.size() == wall_count + 2, "blueprint ledger matches")
+
+	var slept_on_bed := false
+	for t: int in 5400:
+		sim_a.tick()
+		sim_b.tick()
+		if t % 25 == 0:
+			for i: int in sim_a.actors.count:
+				var cell := floori(sim_a.actors.positions[i].y) * sim_a.world.width \
+					+ floori(sim_a.actors.positions[i].x)
+				if sim_a.world.structure_at_cell(cell) == SimWorld.STRUCT_BED:
+					slept_on_bed = true
+
+	_check(sim_a.blueprints.cells.size() == 0, "all blueprints completed")
+	var built_walls := 0
+	var built_door := false
+	var built_bed := false
+	for cell: int in sim_a.world.width * sim_a.world.height:
+		match sim_a.world.structure_at_cell(cell):
+			SimWorld.STRUCT_WALL:
+				built_walls += 1
+			SimWorld.STRUCT_DOOR:
+				built_door = true
+			SimWorld.STRUCT_BED:
+				built_bed = true
+	_check(built_walls == wall_count, "all walls built (%d)" % built_walls)
+	_check(built_door, "door built")
+	_check(built_bed, "bed built")
+	_check(not sim_a.world.is_walkable(ox, oy), "built wall blocks movement")
+	_check(sim_a.world.is_walkable(ox + 2, oy + 4), "built door stays walkable")
+	_check(slept_on_bed, "a tired pawn slept on the bed")
+
+	var on_walkable := true
+	for i: int in sim_a.actors.count:
+		var p := sim_a.actors.positions[i]
+		if not sim_a.world.is_walkable(floori(p.x), floori(p.y)):
+			on_walkable = false
+	_check(on_walkable, "no pawn ended up inside a wall")
+	_check(
+		sim_a.actors.positions == sim_b.actors.positions
+			and sim_a.world.structures == sim_b.world.structures,
+		"building run fully deterministic"
+	)
 
 
 func _test_simulation() -> void:

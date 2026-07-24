@@ -9,10 +9,19 @@ const TILE_SAND := 1
 const TILE_GRASS := 2
 const TILE_ROCK := 3
 
+const STRUCT_NONE := 0
+const STRUCT_WALL := 1
+const STRUCT_DOOR := 2
+const STRUCT_BED := 3
+
 var world_seed: int
 var width: int
 var height: int
 var tiles: PackedByteArray
+# Built structures, one per cell (STRUCT_*). Walls block movement; doors
+# and beds don't. A second grid layer, deliberately separate from terrain.
+var structures: PackedByteArray
+var structures_version := 0  # bumps on every set_structure
 
 
 func _init(seed_value: int, map_width: int, map_height: int) -> void:
@@ -20,10 +29,20 @@ func _init(seed_value: int, map_width: int, map_height: int) -> void:
 	width = map_width
 	height = map_height
 	tiles = MapGen.generate(world_seed, width, height)
+	var _e: int = structures.resize(width * height)
 
 
 func tile_at(x: int, y: int) -> int:
 	return tiles[y * width + x]
+
+
+func structure_at_cell(cell: int) -> int:
+	return structures[cell]
+
+
+func set_structure(cell: int, type: int) -> void:
+	structures[cell] = type
+	structures_version += 1
 
 
 func is_walkable(x: int, y: int) -> bool:
@@ -32,5 +51,8 @@ func is_walkable(x: int, y: int) -> bool:
 	# bounds checks via border sentinels.
 	if x < 1 or y < 1 or x >= width - 1 or y >= height - 1:
 		return false
-	var t := tiles[y * width + x]
+	var cell := y * width + x
+	if structures[cell] == STRUCT_WALL:
+		return false
+	var t := tiles[cell]
 	return t == TILE_SAND or t == TILE_GRASS

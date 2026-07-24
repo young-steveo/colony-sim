@@ -7,7 +7,7 @@
 	"actions": [
 		{
 			"id": "eat",
-			"bucket": 1,
+			"bucket": 2,
 			"weight": 1.0,
 			"execution": "eat",
 			"params": { "restore_per_bite": 0.35, "ticks_per_bite": 45 },
@@ -18,21 +18,52 @@
 				},
 				{
 					"input": "food_distance",
-					"input_max": 80.0,
-					"curve": { "type": "poly", "m": -0.8, "k": 1.0, "b": 1.0, "c": 0.0 }
+					"input_max": 120.0,
+					"curve": { "type": "poly", "m": -1.0, "k": 1.0, "b": 1.0, "c": 0.0 }
+				}
+			]
+		},
+		{
+			"id": "sleep_bed",
+			"bucket": 2,
+			"weight": 1.0,
+			"execution": "sleep_bed",
+			"params": { "restore_per_second": 0.24, "wake_threshold": 0.95 },
+			"considerations": [
+				{
+					"input": "rest",
+					"curve": { "type": "poly", "m": -1.0, "k": 3.0, "b": 0.0, "c": 1.0 }
+				},
+				{
+					"input": "bed_distance",
+					"input_max": 400.0,
+					"curve": { "type": "poly", "m": -1.0, "k": 1.0, "b": 1.0, "c": 0.0 }
 				}
 			]
 		},
 		{
 			"id": "sleep",
-			"bucket": 1,
-			"weight": 1.0,
+			"bucket": 2,
+			"weight": 0.6,
 			"execution": "sleep",
 			"params": { "restore_per_second": 0.12, "wake_threshold": 0.95 },
 			"considerations": [
 				{
 					"input": "rest",
 					"curve": { "type": "poly", "m": -1.0, "k": 3.0, "b": 0.0, "c": 1.0 }
+				}
+			]
+		},
+		{
+			"id": "build",
+			"bucket": 1,
+			"weight": 1.0,
+			"execution": "build",
+			"considerations": [
+				{
+					"input": "blueprint_distance",
+					"input_max": 400.0,
+					"curve": { "type": "poly", "m": -1.0, "k": 1.0, "b": 1.0, "c": 0.0 }
 				}
 			]
 		},
