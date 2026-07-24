@@ -450,9 +450,15 @@ engineering-constitutional.
 2D top-down pixel art. **Color palette: Resurrect 64 by Kerrie Lake**
 (https://lospec.com/palette-list/resurrect-64) — codified in
 `render/palette.gd`; all rendered color draws from it. **Grid: 16×16 tiles
-with 16×32 pawn sprites** (1 tile wide, 2 tall, feet-anchored at the sim
-position — Stardew proportion; decided July 2026 after a silhouette preview).
-Tall pawns will need Y-sorting once walls/overlap exist. Default camera zoom
+with 16×16 pawn sprites** — chibi proportion (oversized head for readable
+expression), 4-direction, contained in the tile square, feet-anchored at the
+sim position. Deliberate scope verdict (July 24, 2026), superseding the
+earlier 16×32 Stardew proportion: small team, content-heavy game — the
+tile-contained sprite is a production constraint we lean into as a style
+selling point. Customization layers (tall hats, hair) may overhang the square
+slightly; large entities (trees ~16×32, big creatures, furniture) will exceed
+it and need Y-sorting/occlusion (actors walk behind a tree's canopy) when
+they arrive. Default camera zoom
 is 2.0 (32 screen px per tile). **Art direction session still pending** for
 style, ramps, and animation. Stephen does the pixel art (and is a musician —
 original music in-house is plausible); opengameart.org for free SFX as
@@ -526,8 +532,9 @@ Failing 1–2 triggers the Delightful Verb kill criterion conversation.
 - Roles/policies/delegation design for large-colony management (find-the-fun
   at build time).
 - World map granularity and the travel/expedition model.
-- ~~Grid size and pawn resolution~~ — resolved: 16×16 tiles, 16×32 pawns
-  (see Presentation). Art style/ramps/animation still need their session.
+- ~~Grid size and pawn resolution~~ — resolved: 16×16 tiles, 16×16 chibi
+  pawns (see Presentation). Art style/ramps/animation still need their
+  session.
 - Children/aging — later-roadmap candidate.
 - Taming/livestock — later.
 - Barter economy details (external trade); internal-economy activation point
@@ -650,6 +657,31 @@ before terrain goes data-driven. Overlay art format is identical
 either way, so art production isn't blocked on the answer. This
 session comes *after* the interaction-model brainstorm, which remains
 next.
+
+### Art verdict — 16×16 chibi pawns (July 24, 2026)
+
+First real sprite landed (`content/actors/body/actor-base.png` +
+`.pyxel`). Stephen's deliberate scope call after honest conversation
+with himself: we're a small team on a content-heavy game, so out went
+the 2.5D faked perspective (head overlapping walls, 8 directions,
+32px height); in came old-school 4-direction chibi contained in the
+16×16 tile — big head for readable expression. The constraint is also
+the style: lean into it as a selling point (Constraints Are the
+Aesthetic, applied to art production itself).
+
+**Sheet conventions:** 4-frame walk cycles, two animations per row —
+row 0 south | north, row 1 east | west. All four directions
+hand-drawn, no runtime mirroring — preserves asymmetric customization
+(scars, hat tilts) forever. Whitespace below reserved for idle,
+punch, etc. Frame-to-animation mapping becomes data when the actor
+pipeline goes data-driven.
+
+**Known future work this buys:** aggregate paperdoll sprites (tophat)
+may slightly overhang the tile; large entities (16×32 trees, big
+creatures, furniture) need Y-sorting/occlusion eventually.
+`ACTOR_SIZE` in the renderer updated 16×24 → 16×16; sheet wiring
+(replacing tinted quads with textured frames) is queued mechanical
+work, deliberately not spending a design session.
 
 ## 14. References
 

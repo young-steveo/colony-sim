@@ -24,9 +24,12 @@ Rules:
 Current layout:
 
 - `actors/ai.json` — utility-AI needs, actions, and response curves.
-- `actors/body/` — base body spritesheet (four-direction walk; whitespace at
-  the bottom of the sheet is reserved for future animation rows). Bottom layer
-  of the future paperdoll stack; hair/apparel become sibling folders.
+- `actors/body/` — `actor-base.png` + `.pyxel`: 16×16 chibi base body,
+  4-frame walk cycles, two animations per row (row 0: south | north,
+  row 1: east | west — all hand-drawn, no runtime mirroring). Whitespace
+  below is reserved for future animations (idle, punch, …). Bottom layer of
+  the future paperdoll stack; hair/apparel become sibling folders and may
+  slightly overhang the 16×16 square.
 - `terrain/` — one sheet per material (`dirt.png` + `dirt.pyxel`), flat
   until a material needs more files. Constructed floors are terrain materials
   too. Each sheet is a standard autotile set (blob or marching-squares
