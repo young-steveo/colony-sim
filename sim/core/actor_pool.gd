@@ -4,17 +4,15 @@ extends RefCounted
 ## actor slot, ticked in one tight loop by the sim. No per-actor objects, no
 ## per-actor _process.
 ##
-## Walking-skeleton behavior: each actor picks a reachable site and follows
-## its shared flow field cell-by-cell ("rolls downhill"); on arrival it picks
-## another site. Per-actor cost is one array lookup per cell — no individual
-## pathfinding. A fixed per-actor jitter offsets targets inside each cell so
-## crowds don't walk single-file. Real utility AI replaces site-picking
-## later; the field-following locomotion stays.
+## Behavior: actors wander locally. When the player sets a rally target
+## (see Simulation.set_command_target), every actor follows the shared flow
+## field to it — one array lookup per cell, no per-actor pathfinding — then
+## reverts to wandering on arrival. A fixed per-actor jitter offsets targets
+## inside each cell so crowds don't walk single-file.
 
 const ARRIVE_DISTANCE := 0.05
 const WANDER_RADIUS := 8.0
 const JITTER := 0.35
-const NO_SITE := -1
 
 var count := 0
 var ids := PackedInt32Array()
@@ -22,7 +20,7 @@ var positions := PackedVector2Array()
 var prev_positions := PackedVector2Array()
 var targets := PackedVector2Array()
 var speeds := PackedFloat32Array()
-var site_index := PackedInt32Array()
+var responding := PackedByteArray()
 var decision_counts := PackedInt32Array()
 var jitter := PackedVector2Array()
 
@@ -46,13 +44,22 @@ func spawn(world: SimWorld, n: int) -> void:
 		prev_positions.push_back(pos)
 		targets.push_back(pos)
 		speeds.push_back(2.0 + 2.0 * s.nextf())
-		site_index.push_back(NO_SITE)
+		responding.push_back(0)
 		decision_counts.push_back(0)
 		jitter.push_back(Vector2((s.nextf() - 0.5) * JITTER, (s.nextf() - 0.5) * JITTER))
 		count += 1
 
 
-func tick(world: SimWorld, fields: Array[FlowField], dt: float) -> void:
+## A new command target exists: everyone answers the call.
+func rally() -> void:
+	for i: int in count:
+		responding[i] = 1
+		# Retarget on the next arrival check by heading to the nearest cell
+		# center; keeps the turn toward the rally point prompt.
+		targets[i] = positions[i]
+
+
+func tick(world: SimWorld, command_field: FlowField, dt: float) -> void:
 	for i: int in count:
 		prev_positions[i] = positions[i]
 		var remaining := speeds[i] * dt
@@ -64,7 +71,7 @@ func tick(world: SimWorld, fields: Array[FlowField], dt: float) -> void:
 			var to_target := targets[i] - pos
 			var dist := to_target.length()
 			if dist <= ARRIVE_DISTANCE:
-				_advance(world, fields, i)
+				_advance(world, command_field, i)
 				decisions += 1
 				continue
 			var step := minf(remaining, dist)
@@ -73,34 +80,24 @@ func tick(world: SimWorld, fields: Array[FlowField], dt: float) -> void:
 
 
 ## Arrived at the current target: set the next one — the next cell along the
-## current site's flow field, or pick a new site (or local wander fallback).
-func _advance(world: SimWorld, fields: Array[FlowField], i: int) -> void:
+## command field while responding, local wander otherwise.
+func _advance(world: SimWorld, command_field: FlowField, i: int) -> void:
 	var pos := positions[i]
-	var cell := floori(pos.y) * world.width + floori(pos.x)
-	if site_index[i] != NO_SITE:
-		var dir := fields[site_index[i]].direction_at_cell(cell)
+	if responding[i] == 1 and command_field != null:
+		var cell := floori(pos.y) * world.width + floori(pos.x)
+		var dir := command_field.direction_at_cell(cell)
 		if dir != Vector2i.ZERO:
 			var next := Vector2(floori(pos.x) + dir.x, floori(pos.y) + dir.y)
 			targets[i] = next + Vector2(0.5, 0.5) + jitter[i]
 			return
-	# At a goal, unreachable, or siteless: choose again.
+		# Arrived (or the rally point is unreachable from here): back to
+		# your own business.
+		responding[i] = 0
 	decision_counts[i] += 1
 	var s := SimRng.stream(
 		SimRng.key([world.world_seed, "decide", ids[i], decision_counts[i]])
 	)
-	var candidates := PackedInt32Array()
-	for k: int in fields.size():
-		if k != site_index[i] and fields[k].is_reachable_cell(cell):
-			candidates.push_back(k)
-	if candidates.is_empty():
-		site_index[i] = NO_SITE
-		targets[i] = _local_wander(world, pos, s)
-		return
-	site_index[i] = candidates[s.next_range(0, candidates.size() - 1)]
-	var dir := fields[site_index[i]].direction_at_cell(cell)
-	if dir != Vector2i.ZERO:
-		var next := Vector2(floori(pos.x) + dir.x, floori(pos.y) + dir.y)
-		targets[i] = next + Vector2(0.5, 0.5) + jitter[i]
+	targets[i] = _local_wander(world, pos, s)
 
 
 func _local_wander(world: SimWorld, pos: Vector2, s: SimRng.Stream) -> Vector2:

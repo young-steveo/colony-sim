@@ -164,23 +164,55 @@ func _test_simulation() -> void:
 	_check(all_walkable, "actors spawn on walkable tiles")
 
 	var stayed_walkable := true
-	for t: int in 300:
+	var check_walkable := func() -> void:
+		for i: int in sim_a.actors.count:
+			var p := sim_a.actors.positions[i]
+			if not sim_a.world.is_walkable(floori(p.x), floori(p.y)):
+				stayed_walkable = false
+
+	for t: int in 150:
 		sim_a.tick()
 		sim_b.tick()
 		if t % 50 == 0:
-			for i: int in sim_a.actors.count:
-				var p := sim_a.actors.positions[i]
-				if not sim_a.world.is_walkable(floori(p.x), floori(p.y)):
-					stayed_walkable = false
-
-	_check(sim_a.actors.positions == sim_b.actors.positions, "300 ticks fully deterministic")
+			check_walkable.call()
+	_check(sim_a.actors.positions == sim_b.actors.positions, "150 wander ticks deterministic")
 	_check(sim_a.actors.positions != spawn_positions, "actors actually move")
-	_check(stayed_walkable, "actors never leave walkable ground")
-	_check(sim_a.sites.size() > 0, "sites were placed")
-	_check(sim_a.tick_count == 300, "tick count advances")
 
-	var travelling := 0
+	# Rally everyone to a walkable cell near the map center.
+	var rx := -1
+	var ry := -1
+	for r: int in 40:
+		if sim_a.world.is_walkable(48 + r, 48):
+			rx = 48 + r
+			ry = 48
+			break
+	_check(rx >= 0, "found a walkable rally cell")
+	_check(sim_a.set_command_target(rx, ry), "set_command_target accepts walkable cell")
+	_check(not sim_a.set_command_target(0, 0), "set_command_target rejects border/unwalkable")
+	var _ok: bool = sim_b.set_command_target(rx, ry)
+
+	var rally_pos := Vector2(rx + 0.5, ry + 0.5)
+	var someone_arrived := false
+	for t: int in 900:
+		sim_a.tick()
+		sim_b.tick()
+		if t % 25 == 0:
+			check_walkable.call()
+			for i: int in sim_a.actors.count:
+				if sim_a.actors.positions[i].distance_to(rally_pos) < 2.0:
+					someone_arrived = true
+	_check(sim_a.actors.positions == sim_b.actors.positions, "rally + 900 ticks deterministic")
+	_check(stayed_walkable, "actors never leave walkable ground")
+	_check(someone_arrived, "actors reach the rally point")
+
+	var still_responding := 0
 	for i: int in sim_a.actors.count:
-		if sim_a.actors.site_index[i] != ActorPool.NO_SITE:
-			travelling += 1
-	_check(travelling > sim_a.actors.count / 2, "most actors are travelling to sites")
+		if sim_a.actors.responding[i] == 1:
+			still_responding += 1
+	_check(
+		still_responding < sim_a.actors.count,
+		"arrivals revert to wandering (%d/%d still responding)" % [
+			still_responding, sim_a.actors.count,
+		]
+	)
+	_check(sim_a.tick_count == 1050, "tick count advances")

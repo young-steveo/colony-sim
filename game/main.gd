@@ -26,12 +26,14 @@ var avg_tick_ms := 0.0
 var terrain: TerrainRenderer
 var actor_renderer: ActorRenderer
 var field_overlay: FieldDebugRenderer
-var field_idx := -1
+var show_field := false
+var rally_marker: Sprite2D
 var cam: Camera2D
 var hud: Label
 
 var _screenshot_mode := false
 var _warmup_ticks := 0
+var _rally_arg := ""
 var _frame := 0
 
 
@@ -48,8 +50,8 @@ func _ready() -> void:
 				default_zoom_idx = idx
 		elif a.begins_with("--actors="):
 			start_actors = maxi(1, int(a.trim_prefix("--actors=")))
-		elif a.begins_with("--field="):
-			field_idx = int(a.trim_prefix("--field="))
+		elif a.begins_with("--rally="):
+			_rally_arg = a.trim_prefix("--rally=")
 		elif a.begins_with("--warmup="):
 			_warmup_ticks = maxi(0, int(a.trim_prefix("--warmup=")))
 
@@ -67,6 +69,9 @@ func _ready() -> void:
 	ui.add_child(hud)
 
 	_start(start_seed)
+	if _rally_arg.contains(","):
+		var parts := _rally_arg.split(",")
+		_rally(int(parts[0]), int(parts[1]))
 	for t: int in _warmup_ticks:
 		sim.tick()
 
@@ -84,15 +89,25 @@ func _start(seed_value: int) -> void:
 		actor_renderer.queue_free()
 	if field_overlay:
 		field_overlay.queue_free()
+	if rally_marker:
+		rally_marker.queue_free()
 	terrain = TerrainRenderer.new()
 	add_child(terrain)
 	terrain.build(sim.world)
 	field_overlay = FieldDebugRenderer.new()
 	add_child(field_overlay)
+	rally_marker = Sprite2D.new()
+	var marker_img := Image.create(1, 1, false, Image.FORMAT_RGB8)
+	marker_img.set_pixel(0, 0, Color.WHITE)
+	rally_marker.texture = ImageTexture.create_from_image(marker_img)
+	rally_marker.centered = false
+	rally_marker.scale = Vector2(TerrainRenderer.TILE_PX, TerrainRenderer.TILE_PX)
+	rally_marker.modulate = Palette.COLORS[18]
+	rally_marker.visible = false
+	add_child(rally_marker)
 	actor_renderer = ActorRenderer.new()
 	add_child(actor_renderer)
 	actor_renderer.setup(world_seed)
-	field_idx = clampi(field_idx, -1, sim.fields.size() - 1)
 	_apply_field_overlay()
 
 	var map_px := Vector2(sim.world.width, sim.world.height) * TerrainRenderer.TILE_PX
@@ -144,20 +159,31 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("debug_regen"):
 		_start(world_seed)
 	elif event.is_action_pressed("debug_field"):
-		field_idx += 1
-		if field_idx >= sim.fields.size():
-			field_idx = -1
+		show_field = not show_field
 		_apply_field_overlay()
 	elif event.is_action_pressed("zoom_in"):
 		_zoom(1)
 	elif event.is_action_pressed("zoom_out"):
 		_zoom(-1)
+	else:
+		var mb := event as InputEventMouseButton
+		if mb and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			var tile := (get_global_mouse_position() / TerrainRenderer.TILE_PX).floor()
+			_rally(int(tile.x), int(tile.y))
+
+
+func _rally(x: int, y: int) -> void:
+	if not sim.set_command_target(x, y):
+		return
+	rally_marker.position = Vector2(x, y) * TerrainRenderer.TILE_PX
+	rally_marker.visible = true
+	_apply_field_overlay()
 
 
 func _apply_field_overlay() -> void:
-	field_overlay.visible = field_idx >= 0
-	if field_idx >= 0:
-		field_overlay.build(sim.world, sim.fields[field_idx])
+	field_overlay.visible = show_field and sim.command_field != null
+	if field_overlay.visible:
+		field_overlay.build(sim.world, sim.command_field)
 
 
 func _zoom(direction: int) -> void:
@@ -172,11 +198,14 @@ func _pan_camera(delta: float) -> void:
 
 func _update_hud() -> void:
 	var speed_text := "paused" if sim_paused else "%dx" % int(SPEEDS[speed_idx])
-	var field_text := "off" if field_idx < 0 else "site %d" % field_idx
+	var responding := 0
+	for i: int in sim.actors.count:
+		if sim.actors.responding[i] == 1:
+			responding += 1
 	hud.text = (
-		"seed %d | actors %d | speed %s | zoom %s | field %s | fps %d | sim tick %.2f ms | tick %d\n" % [
-			world_seed, sim.actors.count, speed_text, str(ZOOM_STEPS[zoom_idx]),
-			field_text, Engine.get_frames_per_second(), avg_tick_ms, sim.tick_count,
+		"seed %d | actors %d (%d rallying) | speed %s | zoom %s | fps %d | sim tick %.2f ms | tick %d\n" % [
+			world_seed, sim.actors.count, responding, speed_text, str(ZOOM_STEPS[zoom_idx]),
+			Engine.get_frames_per_second(), avg_tick_ms, sim.tick_count,
 		]
-		+ "[Space] pause  [1/2/3] speed  [F] +100 actors  [G] field overlay  [N] new seed  [R] regen  [WASD] pan  [wheel] zoom"
+		+ "[click] rally here  [Space] pause  [1/2/3] speed  [F] +100 actors  [G] field overlay  [N] new seed  [R] regen  [WASD] pan  [wheel] zoom"
 	)
