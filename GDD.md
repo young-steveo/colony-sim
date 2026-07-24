@@ -422,6 +422,12 @@ engineering-constitutional.
    colonies (statistical, not tick-by-tick). Off-screen = abstract.
 4. **Data-driven content** (mod rails). Items, events, traits, scenarios as
    data definitions from the start; we ride the same rails modders will.
+   **Audit commitment (July 2026):** ALL content becomes data — structures
+   and their work costs, bushes/resources, terrain parameters, name lists,
+   everything — no later than the resources/hauling era, and new systems
+   author data-first from now on. (The AI is data; recent structure/bush
+   content drifted into GDScript constants. Drift named, correction
+   scheduled.)
 5. **Scenario-proof systems.** No hardcoded assumptions a scenario might vary
    (party size, tech level, biome, morality).
 6. **Toolbox** (use when an idea needs it):
@@ -531,7 +537,57 @@ Failing 1–2 triggers the Delightful Verb kill criterion conversation.
 
 ---
 
-## 13. References
+## 13. Development log
+
+### July 2026 — Principles audit (post-walking-skeleton era)
+
+State at audit: deterministic sim core, flow fields, utility AI v1
+(hunger/rest/safety; eat/sleep/build/wander), construction with
+inside-out solid fills and proximity-ranked crews, async fields,
+inspection panel, 69-test suite. All presentation is debug-grade
+placeholder.
+
+**Grades:** Find the Fun **C** (all delight so far is emergent, none
+authored; zero juice exists). Story Is the Product **D** (no names, no
+events, no log — substrate ready, nothing running; names are the
+cheapest story feature in the project). Delightful Verb **F** (the
+kill-criterion principle: painting has no preview/feedback/undo; tools
+are B-cycled text; the slice's "is painting delightful" test has never
+been attempted — now the project's top-priority debt). Don't Simulate
+Unseen **A−** (disciplined sim; legibility gap: panel shows scores,
+not plain-language *reasons* — every playtest bug needed Claude to
+explain pawn behavior). Performance **A** (benchmarks in repo, 500
+thinking pawns ≈ 1 ms, async kept determinism). Built to Be Modded
+**B, drifting** (ai.json is real; structures/bushes landed as code
+constants — see audit commitment under Architecture Commitments).
+
+**Standing lesson:** every behavioral bug from the first real playtests
+(construction trickle, sleep deadlock, corner-first frontier, absentee
+builders) was a rule written for an imagined thin case breaking under
+player creativity. Test every future rule against: a solid fill, a
+crowd, a sealed room.
+
+**UX decision — no genre defaults by reflex.** Claude proposed the
+standard kit (toolbar, four placement modes, drag previews, undo,
+HUD split). Stephen's counter: don't assume a big toolbar of cursor
+modes like every other colony sim — the interaction model deserves its
+own find-the-fun brainstorm first. Seed idea (imperfect, on record):
+context-sensitive clicks — clicking a tile asks "what would I want to
+do *here*?", possibly radial menus. **Next session is that
+brainstorm.** The proposed kit survives as candidate raw material, not
+as the plan. Uncontested and still queued regardless of interaction
+model: pawn names, plain-language reasons in the panel, build-progress
+visibility, juice on placement/completion, camera feel (zoom-to-
+cursor), debug/player HUD split.
+
+**Art direction:** palette ramps approved — hand-picked Resurrect 64
+ramp assignments replace the ±8% multiply shading (Claude proposes,
+Stephen vetoes). Everything else (16×24 verdict, perspective/¾ view,
+wall depth, animation scope) awaits Stephen's own sprite experiments
+in his art program; he reports back. Pipeline setup (atlas, naming,
+import) happens when the first real sprite exists.
+
+## 14. References
 
 - **Brian Walker (Brogue), RPS interview** — the dungeon as "a living and
   atmospheric place," procgen aspiring to hand-crafted quality. North star for
