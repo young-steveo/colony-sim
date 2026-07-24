@@ -357,15 +357,26 @@ func _test_building() -> void:
 		s.spawn_actors(12)
 	var rest_idx2 := sim_d.defs.need_index(&"rest")
 	var pinned_rest := 0
+	var first_built := -1
 	for t: int in 4500:
 		sim_d.tick()
 		sim_e.tick()
+		if first_built < 0 and sim_d.world.structures_version > 0:
+			for dy: int in 5:
+				for dx: int in 5:
+					var fcell := (sy + dy) * sim_d.world.width + sx + dx
+					if sim_d.world.structure_at_cell(fcell) == SimWorld.STRUCT_WALL:
+						first_built = fcell
 		if t % 50 == 0:
 			var worst := 0
 			for i: int in sim_d.actors.count:
 				if sim_d.actors.needs[rest_idx2][i] < 0.001:
 					worst += 1
 			pinned_rest = maxi(pinned_rest, worst)
+	_check(
+		first_built == (sy + 2) * sim_d.world.width + sx + 2,
+		"first wall built is the center (inside-out order)"
+	)
 	_check(
 		sim_d.blueprints.cells.size() == 0,
 		"solid 5x5 built at a working pace, 4500 ticks (%d blueprints left)"

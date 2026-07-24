@@ -14,6 +14,8 @@ var bed_field: FlowField
 var blueprint_field: FlowField
 var command_field: FlowField
 var tick := 0
-var build_workers := 0  # pawns currently on the build action (last tick's count)
-var build_capacity := 0  # workable frontier jobs as of the last field dispatch
+var build_capacity := 0  # workable frontier jobs right now (live)
+# Sorted field distances of every pawn currently on the build action —
+# lets the crowding input rank "how many builders are closer than me".
+var builder_distances := PackedInt32Array()
 var occupied: Dictionary = {}  # cell -> true for every pawn position at tick start

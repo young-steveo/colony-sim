@@ -144,25 +144,37 @@ func _refresh_frontier(world: SimWorld) -> void:
 					depth[ncell] = current_depth
 					var _e2: bool = next_frontier.push_back(ncell)
 		frontier = next_frontier
-	# Per-cluster maxima: a cell is a goal if no deeper neighbor exists in
-	# its cluster — i.e. its depth is not exceeded by any adjacent
-	# blueprint's depth.
+	# Per-cluster GLOBAL maxima: group blueprints into 4-connected
+	# components and take each component's deepest cells. A local-maximum
+	# shortcut fails here — a solid fill's corners have no deeper
+	# orthogonal neighbor, so they masquerade as "deepest" and get built
+	# first (the corners-and-diagonals bug).
+	var comp_seen := {}
 	for b: int in cells.size():
-		var cell := cells[b]
-		if not depth.has(cell):
-			continue  # unreachable from open ground
-		var my_depth: int = depth[cell]
-		var cx := cell % w
-		@warning_ignore("integer_division")
-		var cy := cell / w
-		var deepest := true
-		for d: int in 4:
-			var ncell := (cy + FlowField.DY[d]) * w + cx + FlowField.DX[d]
-			if depth.get(ncell, 0) > my_depth:
-				deepest = false
-				break
-		if deepest:
-			_frontier[cell] = true
+		var start := cells[b]
+		if not depth.has(start) or comp_seen.has(start):
+			continue
+		var component := PackedInt32Array()
+		var stack := PackedInt32Array()
+		var _e4: bool = stack.push_back(start)
+		comp_seen[start] = true
+		var max_depth := 0
+		while not stack.is_empty():
+			var cell := stack[stack.size() - 1]
+			var _e5: int = stack.resize(stack.size() - 1)
+			var _e6: bool = component.push_back(cell)
+			max_depth = maxi(max_depth, depth[cell])
+			var cx := cell % w
+			@warning_ignore("integer_division")
+			var cy := cell / w
+			for d: int in 4:
+				var ncell := (cy + FlowField.DY[d]) * w + cx + FlowField.DX[d]
+				if depth.has(ncell) and not comp_seen.has(ncell):
+					comp_seen[ncell] = true
+					var _e7: bool = stack.push_back(ncell)
+		for cell: int in component:
+			if depth[cell] == max_depth:
+				_frontier[cell] = true
 
 
 func type_at(cell: int) -> int:

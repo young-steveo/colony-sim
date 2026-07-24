@@ -84,8 +84,8 @@ func tick() -> void:
 	if tick_count % FIELD_REBUILD_INTERVAL == 0:
 		_dispatch_stale_fields()
 	blueprints.reset_workers()
-	_ctx.build_workers = _count_build_workers()
 	_ctx.build_capacity = blueprints.frontier_count(world)
+	_ctx.builder_distances = _collect_builder_distances()
 	_ctx.occupied.clear()
 	for i: int in actors.count:
 		var p := actors.positions[i]
@@ -121,12 +121,19 @@ func cancel_blueprint(x: int, y: int) -> bool:
 	return blueprints.cancel(y * world.width + x)
 
 
-func _count_build_workers() -> int:
-	var n := 0
+func _collect_builder_distances() -> PackedInt32Array:
+	var out := PackedInt32Array()
+	if blueprint_field == null:
+		return out
 	for i: int in actors.count:
-		if actors.current_action[i] == _build_action_idx:
-			n += 1
-	return n
+		if actors.current_action[i] != _build_action_idx:
+			continue
+		var p := actors.positions[i]
+		var d := blueprint_field.distances[floori(p.y) * world.width + floori(p.x)]
+		if d != FlowField.UNREACHABLE:
+			var _e: bool = out.push_back(d)
+	out.sort()
+	return out
 
 
 func _dispatch_stale_fields() -> void:

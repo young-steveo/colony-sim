@@ -192,17 +192,25 @@ func _input_value(ctx: AiContext, i: int, con: AiDefs.ConsiderationDef) -> float
 		&"blueprint_distance":
 			return _field_distance(ctx, i, ctx.blueprint_field)
 		&"build_crowding":
-			# Builders assigned vs. jobs actually workable right now (the
-			# frontier), not total blueprints — a 5x5 fill has 25 prints
-			# but only its deepest cell hires. Exclude the evaluating pawn,
-			# otherwise a full crew vetoes its own jobs at the next
-			# re-decide and construction stalls.
-			if ctx.build_capacity == 0:
+			# Proximity-ranked crowding: of the builders currently
+			# assigned, how many are CLOSER to the work than me, against
+			# the number of workable frontier jobs? The nearest pawns
+			# always rank 0 and take the job; a distant traveler sees
+			# closer pawns saturating capacity and drops out. (Assignment
+			# order alone let far pawns grab slots while the pawn beside
+			# the site wandered.) Strict less-than self-excludes: my own
+			# recorded distance equals mine.
+			if ctx.build_capacity == 0 or ctx.blueprint_field == null:
 				return 1.0
-			var others := ctx.build_workers
-			if current_action[i] >= 0 and ctx.defs.actions[current_action[i]].execution == &"build":
-				others -= 1
-			return clampf(float(others) / float(ctx.build_capacity), 0.0, 1.0)
+			var my_dist := ctx.blueprint_field.distances[_cell_of(ctx.world, positions[i])]
+			if my_dist == FlowField.UNREACHABLE:
+				return 1.0
+			var closer := 0
+			for bd: int in ctx.builder_distances:
+				if bd >= my_dist:
+					break  # sorted
+				closer += 1
+			return clampf(float(closer) / float(ctx.build_capacity), 0.0, 1.0)
 	assert(false, "ActorPool: unhandled input '%s'" % con.input)
 	return 0.0
 
