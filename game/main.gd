@@ -11,7 +11,8 @@ const PAN_SPEED := 900.0
 # Camera zoom locked to steps where a 16px tile lands on whole screen pixels
 # (4, 8, 16, 32, 48, 64 px/tile) — crisp pixel art at every stop.
 const ZOOM_STEPS: Array[float] = [0.25, 0.5, 1.0, 2.0, 3.0, 4.0]
-const DEFAULT_ZOOM_IDX := 3
+# Chunky-first: default to 48 screen px per tile (GDD Presentation).
+const DEFAULT_ZOOM_IDX := 4
 
 var sim: Simulation
 var world_seed := 0
@@ -20,6 +21,7 @@ var speed_idx := 0
 var default_zoom_idx := DEFAULT_ZOOM_IDX
 var start_actors := 100
 var zoom_idx := DEFAULT_ZOOM_IDX
+var _cam_pos := Vector2.ZERO  # continuous pan position; cam snaps to pixels
 var accumulator := 0.0
 var avg_tick_ms := 0.0
 
@@ -97,7 +99,7 @@ func _ready() -> void:
 		sim.tick()
 	if "--inspect" in args and sim.actors.count > 0:
 		selected_id = sim.actors.ids[0]
-		cam.position = sim.actors.positions[0] * TerrainRenderer.TILE_PX
+		_place_camera(sim.actors.positions[0] * TerrainRenderer.TILE_PX)
 
 
 func _start(seed_value: int) -> void:
@@ -158,7 +160,7 @@ func _start(seed_value: int) -> void:
 	_apply_field_overlay()
 
 	var map_px := Vector2(sim.world.width, sim.world.height) * TerrainRenderer.TILE_PX
-	cam.position = map_px * 0.5
+	_place_camera(map_px * 0.5)
 	zoom_idx = default_zoom_idx
 	cam.zoom = Vector2.ONE * ZOOM_STEPS[zoom_idx]
 
@@ -299,7 +301,7 @@ func _place_demo_house() -> void:
 						var _w: bool = sim.place_blueprint(x + dx, y + dy, SimWorld.STRUCT_WALL)
 			var _b1: bool = sim.place_blueprint(x + 2, y + 2, SimWorld.STRUCT_BED)
 			var _b2: bool = sim.place_blueprint(x + 5, y + 2, SimWorld.STRUCT_BED)
-			cam.position = Vector2(x + 4, y + 3) * TerrainRenderer.TILE_PX
+			_place_camera(Vector2(x + 4, y + 3) * TerrainRenderer.TILE_PX)
 			return
 
 
@@ -322,9 +324,20 @@ func _zoom(direction: int) -> void:
 	cam.zoom = Vector2.ONE * ZOOM_STEPS[zoom_idx]
 
 
+## All camera placement goes through here so the continuous pan position
+## stays in sync — the camera itself rides the whole-pixel grid so sprite
+## texels never straddle screen pixels (mixels).
+func _place_camera(pos: Vector2) -> void:
+	_cam_pos = pos
+	cam.position = pos.round()
+
+
 func _pan_camera(delta: float) -> void:
 	var dir := Input.get_vector("pan_left", "pan_right", "pan_up", "pan_down")
-	cam.position += dir * PAN_SPEED * delta / cam.zoom.x
+	if dir == Vector2.ZERO:
+		return
+	_cam_pos += dir * PAN_SPEED * delta / cam.zoom.x
+	cam.position = _cam_pos.round()
 
 
 func _update_hud() -> void:

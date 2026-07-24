@@ -65,7 +65,9 @@ func sync(actors: ActorPool, alpha: float) -> void:
 	var cell_uv := Vector2(1.0 / SHEET_COLS, 1.0 / SHEET_ROWS)
 	for i: int in actors.count:
 		var p := actors.prev_positions[i].lerp(actors.positions[i], alpha) * px
-		multimesh.set_instance_transform_2d(i, Transform2D(0.0, p + feet_offset))
+		# Snap to whole world pixels: sprite texels stay on the art grid
+		# (no mixels), and frame edges never sample into neighboring cells.
+		multimesh.set_instance_transform_2d(i, Transform2D(0.0, (p + feet_offset).round()))
 		var vel := actors.positions[i] - actors.prev_positions[i]
 		var frame := 0
 		if vel.length_squared() > 0.000001:
