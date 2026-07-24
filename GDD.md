@@ -342,6 +342,48 @@ Chronicle ("the fire started in the Walk-In Freezer"), and ownership generates
 drama. **In the vertical slice:** build-enclose-declare IS the primary test of
 "is painting/placing delightful."
 
+### Environment — the tile stack [decided]
+
+Decided July 2026 (session record in the dev log). **Three mechanisms,
+not one** — layer-thinking was the trap; mutual exclusion, quantities,
+and identity get different machinery:
+
+- **Slots** — exclusive, at most one per tile, packed arrays:
+  1. **Substrate** — dirt, fertile soil, rocky dirt, rough stone. The
+     ground itself; immutable in v1 (bedrock permanence has wasteland
+     poetry; revisit with a mining era).
+  2. **Surface** — grass, wood floor, carpet, gravel, pavement, tilled
+     soil, and *authored hybrids* (overgrown flagstone in ruins —
+     restorable to clean flagstone, abandonable back to meadow). Floors
+     and grass share this slot (Stephen's merge): placing a floor
+     destroys grass; tearing it up reveals substrate, and grass returns
+     by neighbor-spread — no suppression memory. Fire consumes the
+     surface slot whatever it holds (per-def flammability, one code
+     path).
+  3. **Structure** — wall, half wall, door, furniture; one per tile.
+  4. **Overhead** — open sky / constructed roof / rock ceiling. Rarely
+     rendered (fade near walls); load-bearing for weather: "indoors" is
+     a cheap per-tile fact, which toxic winds require.
+- **Fields** — per-tile quantities that coexist with everything by
+  nature: snow depth, floodwater depth; later smoke, filth,
+  temperature. Weather state, not stack members — floodwater flowing
+  through a chair's tile is no paradox.
+- **Entities** — identity and lifecycle: actors, bushes, trees, and
+  **items**. Items are never tile-state; an item's *location* is a
+  tile, a **mount on a structure** (tabletop, chair seat, half-wall
+  ledge — mount capacity declared in the structure's def), or an
+  actor's hands.
+
+**The anonymity seam**, applied at every altitude: anonymous stuff is
+packed state (walls, doors, surfaces, grass), identified stuff is an
+entity (bushes, that specific table). Furniture graduates from
+tile-state to entities-with-footprints when identity starts mattering
+(items on tables, ownership, multi-tile pieces); walls never do.
+
+Render order: substrate → surface → water field → structures and
+entities Y-sorted together (tree-canopy occlusion lives here) → snow
+field → overhead (hidden or faded).
+
 ### Build interaction — the painter's palette [direction — slice]
 
 Decided in the interaction-model brainstorm (July 2026); supersedes the
@@ -805,6 +847,39 @@ along — read the document before making claims about it.
 flooring / coverage / wall — before terrain goes data-driven). The
 slice's Delightful Verb test is now concrete: palette + eyedropper +
 single/line + one pattern brush + ghost tiles.
+
+### Environment tile-stack session (July 24, 2026)
+
+Ran the queued session while Stephen draws the verb-slice assets
+(asset contract in content/README.md). How the model was found:
+
+Claude opened with four *layers* — substrate / flooring / coverage /
+structure — grass as "coverage" alongside snow. **Stephen's merge
+challenge won**: floors and grass belong in one surface slot
+(installing a floor destroys grass; destroying the floor exposes
+substrate and grass reclaims by spread). The objections collapsed
+under inspection — snow was always going to be a depth field (it must
+coexist with everything), leaving the coverage layer with one tenant;
+fire gets one code path; tilled soil slots in naturally; regrowth
+needs no suppression-memory state. The residual loss (dynamic
+grass-through-floor coexistence) became a feature: authored hybrid
+surfaces (overgrown flagstone) are more legible and better story rail
+than emergent stacking.
+
+Stephen then extended the model and found its own crack: a third
+layer holding walls, furniture, floodwater, snow, *and items* is a
+junk drawer with coexistence paradoxes (floodwater + chair; items on
+tables and in half-wall ledges). Resolution: **slots / fields /
+entities** — mutual exclusion, quantities, and identity are three
+mechanisms, not one layer list. Items are located entities (tile |
+structure mount | actor hands), never tile-state. Full model under
+Key Systems → Environment.
+
+Also settled: overhead slot adopted (RimWorld roofing concept —
+required for toxic winds via cheap "indoors"), substrate immutable in
+v1, furniture graduates to entities when identity matters (the
+anonymity seam). Terrain going data-driven is now unblocked — surface
+and substrate defs have a home.
 
 ## 14. References
 

@@ -50,6 +50,8 @@ Current layout:
   specific neighbor (per-pair sets are O(n²) and mod-hostile). The renderer draws the substrate
   first, then the higher blend-priority material's overlay tiles on top, so
   one set works over any neighbor. Cell-to-role mapping goes in the
-  material's data entry when terrain goes data-driven. Grass is likely
-  *coverage* (burnable sim state), not substrate — same overlay art format
-  either way; folder placement settles with the environment-stack design.
+  material's data entry when terrain goes data-driven. Settled by the
+  tile-stack design (GDD → Environment): tiles have a **substrate** slot
+  (dirt, stone…) and a **surface** slot (grass, floors, pavement, tilled
+  soil…) — grass is a surface; floors destroy it; spread regrows it. Both
+  kinds of sheet live here in the same blob format.
