@@ -587,6 +587,45 @@ wall depth, animation scope) awaits Stephen's own sprite experiments
 in his art program; he reports back. Pipeline setup (atlas, naming,
 import) happens when the first real sprite exists.
 
+### Brainstorm prep — interaction model (recorded ahead of the session)
+
+**The frequency-variety split** (the load-bearing analysis): player
+intents come in three shapes and the graveyard of failed interfaces is
+mostly one shape's tool forced onto another. (1) *Inspection* —
+constant, identical (may not want clicks at all; hover?). (2)
+*Designation* — frequent, batched (40 identical walls; wants selection
+cost paid once and amortized — this is WHY the genre converged on
+tool-modes; radials are structurally terrible at repetition). (3)
+*Entity commands* — rare, varied (the shape radials/context menus are
+genuinely good at — The Sims' pie menu is the canonical success:
+one varied command per click). Likely answer: not one mechanism.
+
+**Graveyard epitaphs:** Office 2000 adaptive menus — predictability
+beats economy; guessing interfaces destroy muscle memory and trust
+(any "what is the player trying to do?" click-inference lives one bad
+guess from this grave). Black & White — immersion bought with input
+precision is a bad trade when intentions are precise.
+
+**Three weird directions to stress-test:**
+1. **Tools as objects, not modes** — pick up *the chalk*, not "wall
+   mode"; bare hand only asks questions; the current mode is visible
+   because you're holding it. Diegetic modes.
+2. **Draw, don't click** — designation as literal sketching: a chalk
+   plan layer, strokes snapped to grid, possibly shape-recognized
+   (closed loop → "room? outline or filled? door here?"). The founder
+   sketching in the dirt; makes Smarter Construction visible as a
+   collaborator. The Most-Used Verb becomes literally painting.
+3. **Declare outcomes, not instructions** — plant an intent ("shelter,
+   here, for six"), colonists propose the blueprint for approval.
+   Probably too radical for the slice, but it's point-and-declare
+   generalized and rhymes with the 100-colonist delegation era —
+   possibly the interaction model's *endgame*, not its alternative.
+
+**Closing thought to open the session with:** the interaction model
+may be a *progression*, not a single design — hands-on chalk at four
+colonists, declared intent at a hundred; the UX grows up alongside
+the colony like everything else.
+
 ## 14. References
 
 - **Brian Walker (Brogue), RPS interview** — the dungeon as "a living and
