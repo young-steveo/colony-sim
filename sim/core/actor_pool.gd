@@ -28,7 +28,16 @@ var _spawned_total := 0
 
 
 func spawn(world: SimWorld, n: int) -> void:
-	for j: int in n:
+	var new_count := count + n
+	var _e1: int = ids.resize(new_count)
+	var _e2: int = positions.resize(new_count)
+	var _e3: int = prev_positions.resize(new_count)
+	var _e4: int = targets.resize(new_count)
+	var _e5: int = speeds.resize(new_count)
+	var _e6: int = responding.resize(new_count)
+	var _e7: int = decision_counts.resize(new_count)
+	var _e8: int = jitter.resize(new_count)
+	for i: int in range(count, new_count):
 		var id := _spawned_total
 		_spawned_total += 1
 		var s := SimRng.stream(SimRng.key([world.world_seed, "spawn", id]))
@@ -39,15 +48,15 @@ func spawn(world: SimWorld, n: int) -> void:
 			if world.is_walkable(x, y):
 				pos = Vector2(x + 0.5, y + 0.5)
 				break
-		ids.push_back(id)
-		positions.push_back(pos)
-		prev_positions.push_back(pos)
-		targets.push_back(pos)
-		speeds.push_back(2.0 + 2.0 * s.nextf())
-		responding.push_back(0)
-		decision_counts.push_back(0)
-		jitter.push_back(Vector2((s.nextf() - 0.5) * JITTER, (s.nextf() - 0.5) * JITTER))
-		count += 1
+		ids[i] = id
+		positions[i] = pos
+		prev_positions[i] = pos
+		targets[i] = pos
+		speeds[i] = 2.0 + 2.0 * s.nextf()
+		responding[i] = 0
+		decision_counts[i] = 0
+		jitter[i] = Vector2((s.nextf() - 0.5) * JITTER, (s.nextf() - 0.5) * JITTER)
+	count = new_count
 
 
 ## A new command target exists: everyone answers the call.

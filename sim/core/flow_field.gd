@@ -41,7 +41,6 @@ func direction_at_cell(cell: int) -> Vector2i:
 	return Vector2i(DX[d], DY[d])
 
 
-@warning_ignore("integer_division")
 func _build(world: SimWorld, goal_cells: PackedInt32Array) -> void:
 	width = world.width
 	height = world.height
@@ -52,8 +51,10 @@ func _build(world: SimWorld, goal_cells: PackedInt32Array) -> void:
 	# bounds checks: no interior cell's neighbor offset can escape the array.
 	var walk := PackedByteArray()
 	var _err: int = walk.resize(cell_count)
-	for c: int in cell_count:
-		walk[c] = 1 if world.is_walkable(c % width, c / width) else 0
+	for y: int in height:
+		var row := y * width
+		for x: int in width:
+			walk[row + x] = 1 if world.is_walkable(x, y) else 0
 	for x: int in width:
 		walk[x] = 0
 		walk[(height - 1) * width + x] = 0
@@ -82,6 +83,7 @@ func _build(world: SimWorld, goal_cells: PackedInt32Array) -> void:
 	for g: int in goal_cells:
 		if walk[g] == 1 and distances[g] != 0:
 			distances[g] = 0
+			@warning_ignore("return_value_discarded")
 			ring[0].push_back(g)
 			pending += 1
 
@@ -109,6 +111,7 @@ func _build(world: SimWorld, goal_cells: PackedInt32Array) -> void:
 				var nd := cost + edge
 				if nd < distances[ncell]:
 					distances[ncell] = nd
+					@warning_ignore("return_value_discarded")
 					ring[nd % _RING].push_back(ncell)
 					pending += 1
 		cost += 1

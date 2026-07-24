@@ -50,7 +50,8 @@ static func _fnv1a(s: String) -> int:
 static func _hash_part(p: Variant) -> int:
 	match typeof(p):
 		TYPE_INT:
-			return int(p)
+			var v: int = p
+			return v
 		TYPE_STRING:
 			return _fnv1a(str(p))
 		_:

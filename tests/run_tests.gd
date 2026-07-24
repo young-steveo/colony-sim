@@ -95,13 +95,14 @@ func _test_map_gen() -> void:
 	_check(walkable > 64 * 64 / 4, "map is at least 25%% walkable (got %d/4096)" % walkable)
 
 
-@warning_ignore("integer_division")
 func _test_flow_field() -> void:
 	print("FlowField:")
 	var w := SimWorld.new(42, 96, 96)
 	var goal := -1
 	for c: int in w.width * w.height:
-		if w.is_walkable(c % w.width, c / w.width):
+		@warning_ignore("integer_division")
+		var cy := c / w.width
+		if w.is_walkable(c % w.width, cy):
 			goal = c
 			break
 	var f := FlowField.build(w, PackedInt32Array([goal]))
@@ -115,6 +116,7 @@ func _test_flow_field() -> void:
 	var farthest := goal
 	for c: int in w.width * w.height:
 		var x := c % w.width
+		@warning_ignore("integer_division")
 		var y := c / w.width
 		if not w.is_walkable(x, y):
 			if f.distances[c] != FlowField.UNREACHABLE:
