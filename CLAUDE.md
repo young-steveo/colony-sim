@@ -15,3 +15,8 @@
 - `content/` is the mod-shaped tree (data + art, feature-organized); its
   contract lives in `content/README.md`.
 - Refer to Core Principles by name ("the Fun Principle"), never by number.
+- Godot 4 `canvas_item` shaders: `COLOR` arrives at `fragment()` with the
+  texture sample already multiplied in (changed from Godot 3 — do NOT write
+  the Godot 3 idiom `COLOR *= texture(...)`; it squares the values). When
+  colors matter, verify with a pixel probe against source values
+  (`Image.get_pixel` on the framebuffer screenshot), never by eyeball.
