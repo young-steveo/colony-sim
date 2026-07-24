@@ -1,0 +1,47 @@
+{
+	"needs": [
+		{ "id": "hunger", "start": 0.85, "drain_per_second": 0.005 },
+		{ "id": "rest", "start": 0.9, "drain_per_second": 0.003 },
+		{ "id": "safety", "start": 1.0, "drain_per_second": 0.0 }
+	],
+	"actions": [
+		{
+			"id": "eat",
+			"bucket": 1,
+			"weight": 1.0,
+			"execution": "eat",
+			"params": { "restore_per_bite": 0.35, "ticks_per_bite": 45 },
+			"considerations": [
+				{
+					"input": "hunger",
+					"curve": { "type": "poly", "m": 1.0, "k": 2.0, "b": 0.0, "c": 1.0 }
+				},
+				{
+					"input": "food_distance",
+					"input_max": 80.0,
+					"curve": { "type": "poly", "m": -0.8, "k": 1.0, "b": 1.0, "c": 0.0 }
+				}
+			]
+		},
+		{
+			"id": "sleep",
+			"bucket": 1,
+			"weight": 1.0,
+			"execution": "sleep",
+			"params": { "restore_per_second": 0.12, "wake_threshold": 0.95 },
+			"considerations": [
+				{
+					"input": "rest",
+					"curve": { "type": "poly", "m": -1.0, "k": 3.0, "b": 0.0, "c": 1.0 }
+				}
+			]
+		},
+		{
+			"id": "wander",
+			"bucket": 0,
+			"weight": 0.25,
+			"execution": "wander",
+			"considerations": []
+		}
+	]
+}

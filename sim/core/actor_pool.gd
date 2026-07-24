@@ -4,15 +4,26 @@ extends RefCounted
 ## actor slot, ticked in one tight loop by the sim. No per-actor objects, no
 ## per-actor _process.
 ##
-## Behavior: actors wander locally. When the player sets a rally target
-## (see Simulation.set_command_target), every actor follows the shared flow
-## field to it — one array lookup per cell, no per-actor pathfinding — then
-## reverts to wandering on arrival. A fixed per-actor jitter offsets targets
-## inside each cell so crowds don't walk single-file.
+## Behavior = utility AI (see AiDefs for the scoring model). Decisions are
+## staggered — each pawn re-decides every DECIDE_INTERVAL ticks, offset by
+## its id, plus immediately when its current action completes — and are
+## recorded per pawn in last_scores so the inspection panel can always
+## answer "what is this pawn doing and why" (the legibility contract).
+##
+## A player rally command (responding == 1) overrides the brain until
+## arrival — director-mode-lite; later, orders become heavy considerations
+## inside the same scoring pass instead of a bypass.
 
 const ARRIVE_DISTANCE := 0.05
 const WANDER_RADIUS := 8.0
 const JITTER := 0.35
+const DECIDE_INTERVAL := 15
+const COMMITMENT_BONUS := 1.1
+# A higher-bucket action must clear this to preempt lower buckets. Tuned so
+# an eating pawn keeps its meal until roughly three-quarters fed instead of
+# wandering off after two bites.
+const BUCKET_CUTOFF := 0.15
+const NO_ACTION := -1
 
 var count := 0
 var ids := PackedInt32Array()
@@ -23,11 +34,22 @@ var speeds := PackedFloat32Array()
 var responding := PackedByteArray()
 var decision_counts := PackedInt32Array()
 var jitter := PackedVector2Array()
+var current_action := PackedInt32Array()
+var action_timer := PackedInt32Array()
+var needs: Array[PackedFloat32Array] = []
+var last_scores := PackedFloat32Array()  # count * n_actions, row per pawn
 
 var _spawned_total := 0
+var _n_actions := 0
+var _n_needs := 0
 
 
-func spawn(world: SimWorld, n: int) -> void:
+func spawn(world: SimWorld, defs: AiDefs, n: int) -> void:
+	if needs.is_empty():
+		_n_actions = defs.actions.size()
+		_n_needs = defs.needs.size()
+		for nd: int in _n_needs:
+			needs.append(PackedFloat32Array())
 	var new_count := count + n
 	var _e1: int = ids.resize(new_count)
 	var _e2: int = positions.resize(new_count)
@@ -37,6 +59,11 @@ func spawn(world: SimWorld, n: int) -> void:
 	var _e6: int = responding.resize(new_count)
 	var _e7: int = decision_counts.resize(new_count)
 	var _e8: int = jitter.resize(new_count)
+	var _e9: int = current_action.resize(new_count)
+	var _e10: int = action_timer.resize(new_count)
+	var _e11: int = last_scores.resize(new_count * _n_actions)
+	for nd: int in _n_needs:
+		var _e12: int = needs[nd].resize(new_count)
 	for i: int in range(count, new_count):
 		var id := _spawned_total
 		_spawned_total += 1
@@ -56,57 +83,204 @@ func spawn(world: SimWorld, n: int) -> void:
 		responding[i] = 0
 		decision_counts[i] = 0
 		jitter[i] = Vector2((s.nextf() - 0.5) * JITTER, (s.nextf() - 0.5) * JITTER)
+		current_action[i] = NO_ACTION
+		action_timer[i] = 0
+		for nd: int in _n_needs:
+			# Staggered starting levels so the colony doesn't eat and sleep
+			# in lockstep.
+			needs[nd][i] = clampf(defs.needs[nd].start * (0.7 + 0.3 * s.nextf()), 0.05, 1.0)
 	count = new_count
 
 
-## A new command target exists: everyone answers the call.
+## A rally command exists: everyone answers the call.
 func rally() -> void:
 	for i: int in count:
 		responding[i] = 1
-		# Retarget on the next arrival check by heading to the nearest cell
-		# center; keeps the turn toward the rally point prompt.
 		targets[i] = positions[i]
 
 
-func tick(world: SimWorld, command_field: FlowField, dt: float) -> void:
+func need_value(need_idx: int, i: int) -> float:
+	return needs[need_idx][i]
+
+
+func tick(ctx: AiContext, dt: float) -> void:
+	for nd: int in _n_needs:
+		var drain := ctx.defs.needs[nd].drain_per_second * dt
+		if drain > 0.0:
+			var arr := needs[nd]
+			for i: int in count:
+				arr[i] = maxf(arr[i] - drain, 0.0)
+
 	for i: int in count:
 		prev_positions[i] = positions[i]
-		var remaining := speeds[i] * dt
-		# Advance through cell-sized targets without stalling a tick at each
-		# arrival; the guard bounds decision work per actor per tick.
-		var decisions := 0
-		while remaining > 0.0 and decisions < 3:
-			var pos := positions[i]
-			var to_target := targets[i] - pos
-			var dist := to_target.length()
-			if dist <= ARRIVE_DISTANCE:
-				_advance(world, command_field, i)
-				decisions += 1
+		if responding[i] == 1 and ctx.command_field != null:
+			_tick_rally(ctx, i, dt)
+			continue
+		if current_action[i] == NO_ACTION or (ctx.tick + ids[i]) % DECIDE_INTERVAL == 0:
+			_decide(ctx, i)
+		var action := ctx.defs.actions[current_action[i]]
+		match action.execution:
+			&"eat":
+				_tick_eat(ctx, i, action, dt)
+			&"sleep":
+				_tick_sleep(ctx, i, action, dt)
+			&"wander":
+				_tick_wander(ctx, i, dt)
+
+
+# --- decision -------------------------------------------------------------
+
+
+func _decide(ctx: AiContext, i: int) -> void:
+	var row := i * _n_actions
+	for a: int in _n_actions:
+		var action := ctx.defs.actions[a]
+		var product := 1.0
+		for con: AiDefs.ConsiderationDef in action.considerations:
+			product *= con.score(_input_value(ctx, i, con))
+			if product == 0.0:
+				break
+		var score := action.weight * AiDefs.compensate(product, action.considerations.size())
+		if a == current_action[i]:
+			score *= COMMITMENT_BONUS
+		last_scores[row + a] = score
+
+	# Highest bucket whose best score clears the cutoff wins; the lowest
+	# bucket (with its constant-utility idle) always resolves.
+	var chosen := NO_ACTION
+	var lowest: int = ctx.defs.bucket_order[ctx.defs.bucket_order.size() - 1]
+	for bucket: int in ctx.defs.bucket_order:
+		var best := NO_ACTION
+		var best_score := 0.0
+		for a: int in _n_actions:
+			if ctx.defs.actions[a].bucket != bucket:
 				continue
-			var step := minf(remaining, dist)
-			positions[i] = pos + to_target * (step / dist)
-			remaining -= step
+			if last_scores[row + a] > best_score:
+				best_score = last_scores[row + a]
+				best = a
+		if best != NO_ACTION and (best_score >= BUCKET_CUTOFF or bucket == lowest):
+			chosen = best
+			break
+	if chosen != current_action[i]:
+		_start_action(ctx, i, chosen)
 
 
-## Arrived at the current target: set the next one — the next cell along the
-## command field while responding, local wander otherwise.
-func _advance(world: SimWorld, command_field: FlowField, i: int) -> void:
-	var pos := positions[i]
-	if responding[i] == 1 and command_field != null:
-		var cell := floori(pos.y) * world.width + floori(pos.x)
-		var dir := command_field.direction_at_cell(cell)
-		if dir != Vector2i.ZERO:
+func _input_value(ctx: AiContext, i: int, con: AiDefs.ConsiderationDef) -> float:
+	if con.need_idx >= 0:
+		return needs[con.need_idx][i]
+	match con.input:
+		&"food_distance":
+			if ctx.food_field == null:
+				return INF
+			var pos := positions[i]
+			var dist := ctx.food_field.distances[_cell_of(ctx.world, pos)]
+			if dist == FlowField.UNREACHABLE:
+				return INF
+			return float(dist) / float(FlowField.COST_ORTH)
+	assert(false, "ActorPool: unhandled input '%s'" % con.input)
+	return 0.0
+
+
+func _start_action(ctx: AiContext, i: int, action_idx: int) -> void:
+	current_action[i] = action_idx
+	action_timer[i] = 0
+	match ctx.defs.actions[action_idx].execution:
+		&"wander":
+			decision_counts[i] += 1
+			var s := SimRng.stream(
+				SimRng.key([ctx.world.world_seed, "decide", ids[i], decision_counts[i]])
+			)
+			targets[i] = _local_wander(ctx.world, positions[i], s)
+		_:
+			targets[i] = positions[i]
+
+
+func _complete(i: int) -> void:
+	current_action[i] = NO_ACTION  # re-decide next tick
+	targets[i] = positions[i]
+
+
+# --- execution ------------------------------------------------------------
+
+
+func _tick_rally(ctx: AiContext, i: int, dt: float) -> void:
+	if not _follow_field(ctx, i, ctx.command_field, dt):
+		responding[i] = 0
+		_complete(i)
+
+
+func _tick_eat(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> void:
+	var cell := _cell_of(ctx.world, positions[i])
+	if ctx.bushes.has_berries_at(cell):
+		action_timer[i] += 1
+		if action_timer[i] >= action.ticks_per_bite:
+			action_timer[i] = 0
+			var _ate: bool = ctx.bushes.consume_at(cell)
+			var hunger_idx := action.considerations[0].need_idx
+			needs[hunger_idx][i] = minf(needs[hunger_idx][i] + action.restore_per_bite, 1.0)
+			if needs[hunger_idx][i] >= 0.98:
+				_complete(i)
+		return
+	if ctx.food_field == null or not _follow_field(ctx, i, ctx.food_field, dt):
+		# Unreachable, or the bush emptied under us: give up and re-decide.
+		_complete(i)
+
+
+func _tick_sleep(_ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> void:
+	var rest_idx := action.considerations[0].need_idx
+	needs[rest_idx][i] = minf(needs[rest_idx][i] + action.restore_per_second * dt, 1.0)
+	if needs[rest_idx][i] >= action.wake_threshold:
+		_complete(i)
+
+
+func _tick_wander(_ctx: AiContext, i: int, dt: float) -> void:
+	if _move_toward_target(i, speeds[i] * dt):
+		_complete(i)
+
+
+# --- movement -------------------------------------------------------------
+
+
+## Step along a flow field, advancing through cell-sized targets within
+## this tick's movement budget. Returns false when there is nowhere further
+## to go (goal reached or unreachable).
+func _follow_field(ctx: AiContext, i: int, field: FlowField, dt: float) -> bool:
+	var remaining := speeds[i] * dt
+	var advances := 0
+	while advances < 3:
+		var pos := positions[i]
+		var to_target := targets[i] - pos
+		var dist := to_target.length()
+		if dist <= ARRIVE_DISTANCE:
+			var dir := field.direction_at_cell(_cell_of(ctx.world, pos))
+			if dir == Vector2i.ZERO:
+				return false
 			var next := Vector2(floori(pos.x) + dir.x, floori(pos.y) + dir.y)
 			targets[i] = next + Vector2(0.5, 0.5) + jitter[i]
-			return
-		# Arrived (or the rally point is unreachable from here): back to
-		# your own business.
-		responding[i] = 0
-	decision_counts[i] += 1
-	var s := SimRng.stream(
-		SimRng.key([world.world_seed, "decide", ids[i], decision_counts[i]])
-	)
-	targets[i] = _local_wander(world, pos, s)
+			advances += 1
+			continue
+		if remaining <= 0.0:
+			return true
+		var step := minf(remaining, dist)
+		positions[i] = pos + to_target * (step / dist)
+		remaining -= step
+	return true
+
+
+## Move up to max_step toward targets[i]. Returns true on arrival.
+func _move_toward_target(i: int, max_step: float) -> bool:
+	var pos := positions[i]
+	var to_target := targets[i] - pos
+	var dist := to_target.length()
+	if dist <= ARRIVE_DISTANCE:
+		return true
+	var step := minf(max_step, dist)
+	positions[i] = pos + to_target * (step / dist)
+	return dist - step <= ARRIVE_DISTANCE
+
+
+static func _cell_of(world: SimWorld, pos: Vector2) -> int:
+	return floori(pos.y) * world.width + floori(pos.x)
 
 
 func _local_wander(world: SimWorld, pos: Vector2, s: SimRng.Stream) -> Vector2:

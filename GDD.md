@@ -226,7 +226,7 @@ Status tags: **[committed]** we're doing this; **[direction]** working shape,
 details via find-the-fun; **[bet]** unproven design gamble with fallback;
 **[later]** lofty ideal, built only if/when the fun demands it.
 
-### Agent AI — Infinite Axis Utility System [committed]
+### Agent AI — Infinite Axis Utility System [committed — v1 running]
 Pawns score possible actions across weighted considerations (needs, fears,
 personality, orders) and act on the winner. Player orders enter as heavy
 considerations (see Director mode). Pairs naturally with Dijkstra/flow maps as
@@ -234,6 +234,22 @@ the spatial arm of utility scoring ("3× food map + 1× safety map, roll
 downhill"). Must be performant at scale (time-sliced evaluation, event-driven
 updates, not per-tick polling of everything) and *legible* (the winning reason
 is always inspectable).
+
+**v1 core (July 2026), adapted from The Final Archive's proven Mind** (see
+`../the-final-archive` — ARCHITECTURE.md "Actor Mind"): score = product of
+consideration curve outputs → Dave Mark compensation (`1 − 1/n`) → × action
+weight → × commitment bonus (incumbent ×1.1, anti-flip-flop). Weights are
+priority tiers, not tuning knobs; personality will live in stats first,
+curves second, weights never. Our scale adaptations: **priority buckets**
+above the flat menu (a starving pawn can never lose "eat" to "haul" through
+curve luck), **staggered decisions** (per-pawn offset, ~every 0.5 s),
+**parametric curves as plain-data JSON** (`data/ai.json` — mods ride the
+same rails; no editor-drawn Curve resources), and **shared flow fields as
+spatial considerations** (the food field answers "distance to food" for
+every brain at once). The lowest bucket must contain a zero-consideration
+constant-utility idle (asserted at load). Needs v1: hunger, rest, safety
+(0 = crisis, 1 = satisfied). Lesson filed from their PLAN.md: *"repeated
+trials erode any per-check number — re-roll on state change, not per beat."*
 
 ### Threat ecology [direction] / anti-killbox [bet]
 Threats genuinely exist in the world — no conjured, wealth-scaled raids ("why
@@ -431,7 +447,7 @@ engineering-constitutional.
 with 16×32 pawn sprites** (1 tile wide, 2 tall, feet-anchored at the sim
 position — Stardew proportion; decided July 2026 after a silhouette preview).
 Tall pawns will need Y-sorting once walls/overlap exist. Default camera zoom
-is 1.0 (16 screen px per tile). **Art direction session still pending** for
+is 2.0 (32 screen px per tile). **Art direction session still pending** for
 style, ramps, and animation. Stephen does the pixel art (and is a musician —
 original music in-house is plausible); opengameart.org for free SFX as
 filler.

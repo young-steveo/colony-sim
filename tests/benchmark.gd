@@ -23,7 +23,7 @@ func _init() -> void:
 	print("actors | ms/tick | %% of 30tps frame budget (33.3 ms)")
 	for n: int in COUNTS:
 		var sim := Simulation.new(42)
-		sim.actors.spawn(sim.world, n)
+		sim.spawn_actors(n)
 		for t: int in WARMUP_TICKS:
 			sim.tick()
 		var t0 := Time.get_ticks_usec()

@@ -11,6 +11,7 @@ func _init() -> void:
 	_test_rng()
 	_test_map_gen()
 	_test_flow_field()
+	_test_ai()
 	_test_simulation()
 	print("")
 	print("%d passed, %d failed" % [_passes, _failures])
@@ -150,12 +151,73 @@ func _test_flow_field() -> void:
 	_check(f.distances[c] == 0, "downhill walk from farthest cell reaches the goal")
 
 
+func _test_ai() -> void:
+	print("AI:")
+	var defs := AiDefs.load_file(Simulation.AI_DEFS_PATH)
+	_check(defs.needs.size() == 3, "three needs load (hunger, rest, safety)")
+	_check(defs.actions.size() == 3, "three actions load (eat, sleep, wander)")
+	_check(defs.need_index(&"hunger") >= 0, "need_index resolves hunger")
+	var expected_buckets: Array[int] = [1, 0]
+	_check(defs.bucket_order == expected_buckets, "buckets ordered high to low")
+
+	# Pinned compensation values (ported from The Final Archive's tests).
+	_check(
+		is_equal_approx(AiDefs.compensate(0.5, 2), 0.625),
+		"compensation pinned: compensate(0.5, 2) == 0.625"
+	)
+	_check(AiDefs.compensate(1.0, 0) == 1.0, "zero considerations score their weight")
+
+	var eat := defs.actions[defs.action_index(&"eat")]
+	var hunger_con := eat.considerations[0]
+	_check(is_equal_approx(hunger_con.score(1.0), 0.0), "sated hunger scores eat at 0")
+	_check(is_equal_approx(hunger_con.score(0.0), 1.0), "starving hunger scores eat at 1")
+	var mid := hunger_con.score(0.5)
+	_check(mid > 0.2 and mid < 0.3, "half hunger scores quadratically (~0.25)")
+
+	# Behavior: a hungry pawn near food decides to eat and its hunger rises.
+	var sim := Simulation.new(7, 96, 96)
+	_check(sim.bushes.cells.size() > 5, "bushes scattered on grass (%d)" % sim.bushes.cells.size())
+	_check(sim.food_field != null, "food flow field built")
+	sim.spawn_actors(8)
+	var hunger_idx := sim.defs.need_index(&"hunger")
+	var rest_idx := sim.defs.need_index(&"rest")
+	for i: int in sim.actors.count:
+		sim.actors.needs[hunger_idx][i] = 0.2
+	var berries_before := sim.bushes.consumed_total
+	var ate := false
+	var slept := false
+	var prev_rest := sim.actors.needs[rest_idx].duplicate()
+	for t: int in 2400:
+		sim.tick()
+		if t % 20 == 0:
+			for i: int in sim.actors.count:
+				if sim.bushes.consumed_total > berries_before:
+					ate = true
+				if sim.actors.needs[rest_idx][i] > prev_rest[i]:
+					slept = true
+			prev_rest = sim.actors.needs[rest_idx].duplicate()
+	_check(ate, "hungry pawns found food and ate (%d berries)" % sim.bushes.consumed_total)
+	_check(slept, "tired pawns slept (rest rose)")
+	var in_range := true
+	for nd: int in sim.defs.needs.size():
+		for i: int in sim.actors.count:
+			var v := sim.actors.needs[nd][i]
+			if v < 0.0 or v > 1.0:
+				in_range = false
+	_check(in_range, "need values stay in [0, 1]")
+	var scored := false
+	for v: float in sim.actors.last_scores:
+		if v > 0.0:
+			scored = true
+	_check(scored, "last_scores populated for inspection")
+
+
 func _test_simulation() -> void:
 	print("Simulation:")
 	var sim_a := Simulation.new(7, 96, 96)
 	var sim_b := Simulation.new(7, 96, 96)
-	sim_a.actors.spawn(sim_a.world, 20)
-	sim_b.actors.spawn(sim_b.world, 20)
+	sim_a.spawn_actors(20)
+	sim_b.spawn_actors(20)
 
 	var spawn_positions := sim_a.actors.positions.duplicate()
 	var all_walkable := true
