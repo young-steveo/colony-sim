@@ -1,7 +1,7 @@
 class_name AiDefs
 extends RefCounted
 ## Data-driven AI definitions: needs, considerations, actions — parsed from
-## plain JSON (data/ai.json) so modders author on the same rails we do
+## plain JSON (content/actors/ai.json) so modders author on the same rails we do
 ## (Built to Be Modded). Validation is loud and happens at load, never
 ## mid-decision.
 ##

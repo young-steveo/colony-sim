@@ -9,7 +9,7 @@ extends RefCounted
 
 const TICKS_PER_SECOND := 30
 const TICK_DT := 1.0 / TICKS_PER_SECOND
-const AI_DEFS_PATH := "res://data/ai.json"
+const AI_DEFS_PATH := "res://content/actors/ai.json"
 
 ## Shared flow fields rebuild asynchronously on worker threads under a
 ## fixed-latency contract: a rebuild dispatched at tick T is installed at

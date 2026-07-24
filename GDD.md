@@ -243,7 +243,7 @@ priority tiers, not tuning knobs; personality will live in stats first,
 curves second, weights never. Our scale adaptations: **priority buckets**
 above the flat menu (a starving pawn can never lose "eat" to "haul" through
 curve luck), **staggered decisions** (per-pawn offset, ~every 0.5 s),
-**parametric curves as plain-data JSON** (`data/ai.json` — mods ride the
+**parametric curves as plain-data JSON** (`content/actors/ai.json` — mods ride the
 same rails; no editor-drawn Curve resources), and **shared flow fields as
 spatial considerations** (the food field answers "distance to food" for
 every brain at once). The lowest bucket must contain a zero-consideration

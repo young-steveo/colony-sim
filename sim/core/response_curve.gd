@@ -1,7 +1,7 @@
 class_name ResponseCurve
 extends RefCounted
 ## Parametric IAUS response curve: maps a normalized input in [0,1] to a
-## score in [0,1]. Authored as plain data (see data/ai.json) so mods ride
+## score in [0,1]. Authored as plain data (see content/actors/ai.json) so mods ride
 ## the same rails — no editor-drawn Curve resources in the sim.
 ##
 ##   poly:     y = m * (x - c)^k + b
