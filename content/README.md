@@ -27,3 +27,11 @@ Current layout:
 - `actors/body/` — base body spritesheet (four-direction walk; whitespace at
   the bottom of the sheet is reserved for future animation rows). Bottom layer
   of the future paperdoll stack; hair/apparel become sibling folders.
+- `terrain/` — one sheet per material (`grass.png` + `grass.pyxel`), flat
+  until a material needs more files. Constructed floors are terrain materials
+  too. Transitions are per-material edge overlays drawn against transparency
+  (not per-pair tiles — pairs are O(n²) and mod-hostile); the higher
+  blend-priority material draws its edges over any neighbor. Shared sheet
+  layout so the loader can assume it: row 0 base variants, row 1 edge
+  overlays (N, E, S, W), row 2 outer + inner corners, whitespace below
+  reserved per material.
