@@ -101,13 +101,6 @@ func _ready() -> void:
 		selected_id = sim.actors.ids[0]
 		_place_camera(sim.actors.positions[0] * TerrainRenderer.TILE_PX)
 
-	# THROWAWAY: paint a wood-wall autotile showcase near the camera so the
-	# 47-blob sheet can be judged in-world. Delete with WallTestRenderer.
-	var wall_test := WallTestRenderer.new()
-	add_child(wall_test)
-	var cam_tile := Vector2i((cam.position / TerrainRenderer.TILE_PX).floor())
-	wall_test.setup(cam_tile - Vector2i(11, 4))
-
 
 func _start(seed_value: int) -> void:
 	world_seed = seed_value
