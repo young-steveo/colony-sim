@@ -30,12 +30,12 @@ Current layout:
   below is reserved for future animations (idle, punch, …). Bottom layer of
   the future paperdoll stack; hair/apparel become sibling folders and may
   slightly overhang the 16×16 square.
-- `structures/` — one sheet per structure, flat. Walls autotile on 4
-  neighbors (lines, not areas): **16-cell template, 4×4 grid of 16×16**
-  (64×64 px); arrange cells consistently — the cell→connection map is
-  written once against the first real sheet. Doors: 2 cells (E-W wall,
-  N-S wall). Ghost/blueprint rendering reuses these sheets tinted in
-  shader — no separate ghost art.
+- `structures/` — one sheet per structure, flat. **Walls are areas, not
+  lines** (the standing lesson: every rule must survive a solid fill — a
+  7×7 block of wall connects), so walls use the SAME 12×5 47-blob template
+  as terrain (`wall_wood.png` is the reference arrangement). Doors: 2
+  cells (E-W wall, N-S wall). Ghost/blueprint rendering reuses these
+  sheets tinted in shader — no separate ghost art.
 - `ui/` — UI chrome and icons (9-slice `panel.png` 24×24 with 8px corners,
   16×16 icons). UI art is content: someday mods reskin it.
 - `terrain/` — one sheet per material (`dirt.png` + `dirt.pyxel`), flat
