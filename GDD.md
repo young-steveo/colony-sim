@@ -178,6 +178,19 @@ single biggest UX risk in the design. If disobedience isn't legible, director
 mode makes the game feel broken. Clicking any pawn shows what they're doing,
 what they're trying to do, and why.
 
+**Vocabulary (locked July 2026):** three tiers. *Actor* — engine class,
+anything AI-driven (includes zombies and spiders); never player-facing.
+*Survivor* — fiction-generic: any human of the wasteland; the event-prose
+register ("a group of survivors approaches the gate"). Allegiance terms —
+**settler** (one of ours; the canonical UI term), raider, trader, cultist.
+Settler over survivor for membership because survivor centers the
+catastrophe (a wanderer's word — Fallout's register) while settler centers
+the staying (the logline in one word; see Differentiation). Becoming a
+settler is a name-change story beat: the moment the label changes is the
+moment they chose to stay. "The little guys" survives as affectionate
+slang, never formalized. Scenario origins may flavor prose
+("vault-dwellers", "caravan survivors"); the UI term stays settler.
+
 ---
 
 ## 6. Core Gameplay
@@ -328,6 +341,61 @@ Named rooms feed the Story Principle: names appear in the event log and the
 Chronicle ("the fire started in the Walk-In Freezer"), and ownership generates
 drama. **In the vertical slice:** build-enclose-declare IS the primary test of
 "is painting/placing delightful."
+
+### Build interaction — the painter's palette [direction — slice]
+
+Decided in the interaction-model brainstorm (July 2026); supersedes the
+"standard kit" toolbar proposal. Full session record in the dev log.
+
+- **Swatch** = one placeable combo: structure × material × variant ("full
+  wall · limestone", "half wall · wood", "wood floor", "marble door").
+- **Palette** = a named, player-composed set of swatches ("Defense Kit",
+  "Homestead Kit"). Build mode (edge button + hotkey) shows the active
+  palette on the number row; Tab/brackets cycle palettes. Slots are
+  bookmarks, not inventory (Factorio quickbar insight, FFF-278). Layouts
+  are player-arranged and stable — muscle memory requires it (Kurtenbach &
+  Buxton, CHI '93/'94).
+- **The cabinet** — full-grid browse/compose view — IS the
+  tech-as-archaeology catalog: mastered swatches selectable;
+  recovered-not-understood items visible, grayed, with their story.
+  Routine play never opens it; quickbar + eyedropper cover the loop.
+- **Eyedropper** (one key): sample any built tile, plan, or ruin → active
+  swatch. Sampling pre-war ruins you haven't mastered answers "you don't
+  know how to build this — yet" (catalog link). "More of that one" is the
+  dominant selection intent (Minecraft pick-block, Factorio pipette).
+- **Pattern brushes**: an ordered swatch sequence repeating along a stroke
+  (full·full·full·half = parapet windows) — the dither pattern concept.
+  Patterns are data (ordered swatch refs): saveable, shareable, moddable.
+- **Placement**: single + line for the slice; line commits on release
+  (kills the half-drawn-thought bug class and the emergency-path problem —
+  placement is immediate). Flood-fill for floors soon after (bounded by
+  walls/plans; enclosure flood-fill already exists). Freehand chalk
+  sketching and a sketch→approve plan layer drop to the roadmap as
+  Fun-Principle prototype candidates, not assumptions.
+- **Doors** are swatches occupying wall tiles, orientation inferred from
+  neighbors. **Floors** are independent swatches — never bundled, never
+  forced (the no-floor material-saving hovel is the default, not an
+  opt-out). A "quartermaster's choice" wildcard material is just another
+  swatch — delegation demoted from architecture to option.
+- **Plan rendering: classic ghost tiles in all modes, for now** (scope
+  call, July 2026). The diegetic dual-register version is a planned
+  possible feature, recorded so it isn't lost: ghosts in build mode
+  (decision detail — material, height); outside build mode, **stakes and
+  string** — terrain-independent (survives the mixed dirt/sand/stone
+  corners procgen guarantees), colored surveyor's flags per material, a
+  flagged gap in the string where a door goes, staged materials
+  progressively becoming the preview. Ghosts anchor on stake positions
+  and cross-fade, never snap. Era progression upgrades the plan language
+  globally (string → drafting standards), never per-tile. Build it after
+  the verb is proven fun.
+- **Radial menus** are reserved for the stable director-mode verb set —
+  never for materials (dynamic lists destroy marking-menu muscle memory —
+  Kurtenbach & Buxton).
+
+**Slice test (revises the line above):** palette bar + eyedropper +
+single/line placement + one pattern brush + ghost-tile plan rendering,
+juiced until painting feels good — or the kill criterion fires. The
+chain is paint → build → declare (signpost step unchanged).
 
 ### Trade — external [later — direction: barter]
 A post-apoc world has to have trade. Barter economy, caravans. Deferred until
@@ -682,6 +750,58 @@ creatures, furniture) need Y-sorting/occlusion eventually.
 `ACTOR_SIZE` in the renderer updated 16×24 → 16×16; sheet wiring
 (replacing tinted quads with textured frames) is queued mechanical
 work, deliberately not spending a design session.
+
+### Interaction-model brainstorm — the session (July 24, 2026)
+
+The planned find-the-fun session, run against the prep notes. Outcome:
+the **painter's palette** model (now under Key Systems → Build
+interaction). How it went, for the record:
+
+**Claude's opening synthesis** — a chalk *plan layer* as first-class
+object (draw → approve → build), tools-as-chalks, late-bound materials
+via a per-plan spec card, delegation as the declare-outcomes dial —
+**did not survive contact with Stephen**, and the reasons are worth
+keeping: (1) per-terrain plan rendering (rope on dirt, chalk on stone)
+breaks on procgen maps where one blueprint spans three terrains; (2) the
+homogeneous spec card fails real play — mixed materials, deliberately
+floorless builds, patterned walls (full·full·full·half parapets); (3)
+freehand drawing loses to line placement on efficiency for the frequent
+case. What survived: the plan/approval *concept* (roadmap,
+Fun-Principle prototype), stakes-and-string diegesis (made
+terrain-independent), delegation (demoted to a wildcard swatch),
+signpost declare (unchanged), radials-for-director-verbs.
+
+**Research run mid-session** (Stephen's call): Factorio FFF-278
+(quickbar = bookmarks, not inventory; pipette;
+https://direct.factorio.com/blog/post/fff-278), Minecraft pick-block
+("more of that one" is the dominant selection intent), the RimWorld
+architect-menu mod genus (Dropdowns with Mats, Better Architect Menu,
+Blueprints — the wound is shared, the mods triangulate the fix),
+ONI/Timberborn complaints (popups occluding the canvas, forgetful
+material defaults, unstable hotkeys), and Kurtenbach & Buxton's marking
+menus (CHI '93/'94): radial gesture menus are fast with a clean
+novice→expert ramp but require stable layouts — so radials serve the
+stable director verb set, never the dynamic material list.
+
+**Stephen's contributions that shaped the final model:** palettes as
+two-level structure (task-scoped kits, not one flat bar); build mode as
+an explicit state; the giant-grid cabinet; the dual-register plan
+rendering — ghosts in build mode, stakes-and-string outside it
+("holding the tools changes how you see") — and then the scope call to
+ship classic ghosts everywhere first and keep dual-register as a
+planned feature. Simplify-first applied to his own favorite idea.
+
+**Also settled this session:** the three-tier vocabulary
+(actor / survivor / settler — see The Player), reaffirmed
+no-individual-control (director mode is constitutional; open to
+finding fun otherwise), and CLAUDE.md now exists because Claude
+asserted the GDD lacked a setting section that §4 has contained all
+along — read the document before making claims about it.
+
+**Queued next:** the environment tile stack session (substrate /
+flooring / coverage / wall — before terrain goes data-driven). The
+slice's Delightful Verb test is now concrete: palette + eyedropper +
+single/line + one pattern brush + ghost tiles.
 
 ## 14. References
 
