@@ -15,3 +15,5 @@ var blueprint_field: FlowField
 var command_field: FlowField
 var tick := 0
 var build_workers := 0  # pawns currently on the build action (last tick's count)
+var build_capacity := 0  # workable frontier jobs as of the last field dispatch
+var occupied: Dictionary = {}  # cell -> true for every pawn position at tick start

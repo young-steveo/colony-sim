@@ -14,7 +14,9 @@ const WORK_SECONDS: Dictionary = {
 	SimWorld.STRUCT_BED: 5.0,
 }
 
-const MAX_WORKERS_PER_CELL := 2
+# One builder per job: keeps future skill rolls, build failures, and XP
+# attribution unambiguous (a "helper" mechanic can lift this someday).
+const MAX_WORKERS_PER_CELL := 1
 
 var cells := PackedInt32Array()
 var types := PackedByteArray()
@@ -72,6 +74,68 @@ func goal_cells() -> PackedInt32Array:
 	return cells.duplicate()
 
 
+## The build frontier: for each connected cluster of blueprints, its
+## deepest cells (BFS depth from open walkable ground). Routing builders
+## deepest-first makes solid fills complete inside-out — the Smarter
+## Construction ordering — instead of sealing their own interiors off.
+## Unreachable blueprints (no path from open ground) are excluded.
+func frontier_goals(world: SimWorld) -> PackedInt32Array:
+	var goals := PackedInt32Array()
+	if cells.is_empty():
+		return goals
+	var w := world.width
+	# Layered BFS inward: seed with blueprints touching open (non-blueprint,
+	# walkable) ground at depth 1, then flood through blueprint adjacency.
+	var depth := {}
+	var frontier := PackedInt32Array()
+	for b: int in cells.size():
+		var cell := cells[b]
+		var cx := cell % w
+		@warning_ignore("integer_division")
+		var cy := cell / w
+		for d: int in 4:
+			var nx := cx + FlowField.DX[d]
+			var ny := cy + FlowField.DY[d]
+			if world.is_walkable(nx, ny) and not cell_lookup.has(ny * w + nx):
+				depth[cell] = 1
+				var _e: bool = frontier.push_back(cell)
+				break
+	var current_depth := 1
+	while not frontier.is_empty():
+		var next_frontier := PackedInt32Array()
+		current_depth += 1
+		for cell: int in frontier:
+			var cx := cell % w
+			@warning_ignore("integer_division")
+			var cy := cell / w
+			for d: int in 4:
+				var ncell := (cy + FlowField.DY[d]) * w + cx + FlowField.DX[d]
+				if cell_lookup.has(ncell) and not depth.has(ncell):
+					depth[ncell] = current_depth
+					var _e2: bool = next_frontier.push_back(ncell)
+		frontier = next_frontier
+	# Per-cluster maxima: a cell is a goal if no deeper neighbor exists in
+	# its cluster — i.e. its depth is not exceeded by any adjacent
+	# blueprint's depth.
+	for b: int in cells.size():
+		var cell := cells[b]
+		if not depth.has(cell):
+			continue  # unreachable from open ground
+		var my_depth: int = depth[cell]
+		var cx := cell % w
+		@warning_ignore("integer_division")
+		var cy := cell / w
+		var deepest := true
+		for d: int in 4:
+			var ncell := (cy + FlowField.DY[d]) * w + cx + FlowField.DX[d]
+			if depth.get(ncell, 0) > my_depth:
+				deepest = false
+				break
+		if deepest:
+			var _e3: bool = goals.push_back(cell)
+	return goals
+
+
 func type_at(cell: int) -> int:
 	var idx: int = cell_lookup.get(cell, -1)
 	return int(types[idx]) if idx >= 0 else SimWorld.STRUCT_NONE
@@ -82,7 +146,7 @@ func reset_workers() -> void:
 
 
 ## Register one worker on this cell for the current tick. Returns false if
-## the cell is already at capacity (two pawns per job — company, not crowds).
+## the cell is already at capacity.
 func add_worker(cell: int) -> bool:
 	var idx: int = cell_lookup.get(cell, -1)
 	if idx < 0 or workers[idx] >= MAX_WORKERS_PER_CELL:

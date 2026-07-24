@@ -330,6 +330,57 @@ func _test_building() -> void:
 	)
 	_check(sim_c.blueprints.cells.size() == 0, "the door still got built")
 
+	# Solid fill: a 5x5 block of wall must complete inside-out — the deep
+	# interior cells can only be built from atop the ghost scaffold.
+	var sim_d := Simulation.new(31, 96, 96)
+	var sim_e := Simulation.new(31, 96, 96)
+	var sx := -1
+	var sy := -1
+	for y: int in range(2, 88):
+		for x: int in range(2, 88):
+			var clear := true
+			for dy: int in 5:
+				for dx: int in 5:
+					if not sim_d.world.is_walkable(x + dx, y + dy):
+						clear = false
+			if clear:
+				sx = x
+				sy = y
+				break
+		if sy >= 0:
+			break
+	_check(sx >= 0, "found a walkable 5x5 site")
+	for s: Simulation in [sim_d, sim_e]:
+		for dx: int in 5:
+			for dy: int in 5:
+				var _w2: bool = s.place_blueprint(sx + dx, sy + dy, SimWorld.STRUCT_WALL)
+		s.spawn_actors(12)
+	for t: int in 9000:
+		sim_d.tick()
+		sim_e.tick()
+	_check(
+		sim_d.blueprints.cells.size() == 0,
+		"solid 5x5 fully built (%d blueprints left)" % sim_d.blueprints.cells.size()
+	)
+	var solid := true
+	for dx: int in 5:
+		for dy: int in 5:
+			var scell := (sy + dy) * sim_d.world.width + sx + dx
+			if sim_d.world.structure_at_cell(scell) != SimWorld.STRUCT_WALL:
+				solid = false
+	_check(solid, "every cell of the block is wall")
+	var d_walkable := true
+	for i: int in sim_d.actors.count:
+		var p := sim_d.actors.positions[i]
+		if not sim_d.world.is_walkable(floori(p.x), floori(p.y)):
+			d_walkable = false
+	_check(d_walkable, "no pawn entombed in the block")
+	_check(
+		sim_d.actors.positions == sim_e.actors.positions
+			and sim_d.world.structures == sim_e.world.structures,
+		"solid-fill run fully deterministic"
+	)
+
 
 func _test_simulation() -> void:
 	print("Simulation:")

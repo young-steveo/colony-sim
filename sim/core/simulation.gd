@@ -19,7 +19,7 @@ const AI_DEFS_PATH := "res://data/ai.json"
 ## never influence sim state. Movement legality never comes from fields
 ## (every step checks live walkability), so stale fields are safe by
 ## construction.
-const FIELD_REBUILD_INTERVAL := 30  # how often dirt is collected into jobs
+const FIELD_REBUILD_INTERVAL := 15  # how often dirt is collected into jobs
 const FIELD_ASYNC_TICKS := 45  # dispatch-to-install latency
 
 var world: SimWorld
@@ -40,6 +40,7 @@ var _blueprint_version_seen := 0
 var _structures_version_seen := 0
 var _walkability_dirty := false
 var _build_action_idx := -1
+var _frontier_count := 0
 var _jobs: Dictionary = {}  # StringName -> _FieldJob in flight
 
 
@@ -85,6 +86,11 @@ func tick() -> void:
 		_dispatch_stale_fields()
 	blueprints.reset_workers()
 	_ctx.build_workers = _count_build_workers()
+	_ctx.build_capacity = _frontier_count
+	_ctx.occupied.clear()
+	for i: int in actors.count:
+		var p := actors.positions[i]
+		_ctx.occupied[floori(p.y) * world.width + floori(p.x)] = true
 	_ctx.command_field = command_field
 	_ctx.tick = tick_count
 	actors.tick(_ctx, TICK_DT)
@@ -132,7 +138,7 @@ func _dispatch_stale_fields() -> void:
 		_blueprint_version_seen = blueprints.version
 		_dispatch_field(&"food", bushes.goal_cells())
 		_dispatch_field(&"bed", _bed_goals())
-		_dispatch_field(&"blueprint", blueprints.goal_cells())
+		_dispatch_blueprint_field()
 		if command_cell >= 0:
 			_dispatch_field(&"command", PackedInt32Array([command_cell]))
 		return
@@ -141,7 +147,13 @@ func _dispatch_stale_fields() -> void:
 		_dispatch_field(&"food", bushes.goal_cells())
 	if blueprints.version != _blueprint_version_seen:
 		_blueprint_version_seen = blueprints.version
-		_dispatch_field(&"blueprint", blueprints.goal_cells())
+		_dispatch_blueprint_field()
+
+
+func _dispatch_blueprint_field() -> void:
+	var frontier := blueprints.frontier_goals(world)
+	_frontier_count = frontier.size()
+	_dispatch_field(&"blueprint", frontier)
 
 
 func _bed_goals() -> PackedInt32Array:

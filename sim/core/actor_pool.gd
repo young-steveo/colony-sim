@@ -37,6 +37,7 @@ var jitter := PackedVector2Array()
 var current_action := PackedInt32Array()
 var action_timer := PackedInt32Array()
 var build_claims := PackedInt32Array()  # blueprint cell being worked, or -1
+var build_cooldowns := PackedInt32Array()  # no build re-pick until this tick
 var needs: Array[PackedFloat32Array] = []
 var last_scores := PackedFloat32Array()  # count * n_actions, row per pawn
 
@@ -64,6 +65,7 @@ func spawn(world: SimWorld, defs: AiDefs, n: int) -> void:
 	var _e10: int = action_timer.resize(new_count)
 	var _e11: int = last_scores.resize(new_count * _n_actions)
 	var _e13: int = build_claims.resize(new_count)
+	var _e14: int = build_cooldowns.resize(new_count)
 	for nd: int in _n_needs:
 		var _e12: int = needs[nd].resize(new_count)
 	for i: int in range(count, new_count):
@@ -88,6 +90,7 @@ func spawn(world: SimWorld, defs: AiDefs, n: int) -> void:
 		current_action[i] = NO_ACTION
 		action_timer[i] = 0
 		build_claims[i] = -1
+		build_cooldowns[i] = 0
 		for nd: int in _n_needs:
 			# Staggered starting levels so the colony doesn't eat and sleep
 			# in lockstep.
@@ -116,6 +119,7 @@ func tick(ctx: AiContext, dt: float) -> void:
 
 	for i: int in count:
 		prev_positions[i] = positions[i]
+		_rescue_if_stuck(ctx.world, i)
 		if responding[i] == 1 and ctx.command_field != null:
 			_tick_rally(ctx, i, dt)
 			continue
@@ -142,6 +146,11 @@ func _decide(ctx: AiContext, i: int) -> void:
 	var row := i * _n_actions
 	for a: int in _n_actions:
 		var action := ctx.defs.actions[a]
+		if action.execution == &"build" and ctx.tick < build_cooldowns[i]:
+			# Recently blocked or crowded out: sit this one out briefly so
+			# stale-field churn doesn't freeze pawns mid-route.
+			last_scores[row + a] = 0.0
+			continue
 		var product := 1.0
 		for con: AiDefs.ConsiderationDef in action.considerations:
 			product *= con.score(_input_value(ctx, i, con))
@@ -183,17 +192,17 @@ func _input_value(ctx: AiContext, i: int, con: AiDefs.ConsiderationDef) -> float
 		&"blueprint_distance":
 			return _field_distance(ctx, i, ctx.blueprint_field)
 		&"build_crowding":
-			# Builders assigned vs. total work capacity: 1.0 = saturated.
-			# Exclude the evaluating pawn — otherwise a full crew vetoes
-			# its own jobs at the next re-decide and construction stalls.
-			var bp_count := ctx.blueprints.cells.size()
-			if bp_count == 0:
+			# Builders assigned vs. jobs actually workable right now (the
+			# frontier), not total blueprints — a 5x5 fill has 25 prints
+			# but only its deepest cell hires. Exclude the evaluating pawn,
+			# otherwise a full crew vetoes its own jobs at the next
+			# re-decide and construction stalls.
+			if ctx.build_capacity == 0:
 				return 1.0
 			var others := ctx.build_workers
 			if current_action[i] >= 0 and ctx.defs.actions[current_action[i]].execution == &"build":
 				others -= 1
-			var capacity := float(bp_count * Blueprints.MAX_WORKERS_PER_CELL)
-			return clampf(float(others) / capacity, 0.0, 1.0)
+			return clampf(float(others) / float(ctx.build_capacity), 0.0, 1.0)
 	assert(false, "ActorPool: unhandled input '%s'" % con.input)
 	return 0.0
 
@@ -256,7 +265,12 @@ func _tick_eat(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> v
 		_complete(i)
 
 
-func _tick_sleep(_ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> void:
+func _tick_sleep(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> void:
+	# Don't bed down on someone's construction site.
+	var cell := _cell_of(ctx.world, positions[i])
+	if ctx.blueprints.has_at(cell):
+		var _moved := _step_off_blueprints(ctx, i, cell, dt)
+		return
 	var rest_idx := action.considerations[0].need_idx
 	needs[rest_idx][i] = minf(needs[rest_idx][i] + action.restore_per_second * dt, 1.0)
 	if needs[rest_idx][i] >= action.wake_threshold:
@@ -276,15 +290,11 @@ func _tick_sleep_bed(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float
 
 
 ## Builders work standing exactly one tile beside the blueprint — never on
-## it — and refuse walls that would seal them into a pocket (the Smarter
-## Construction rule).
+## it — and refuse walls that would seal them into a pocket. Blueprint
+## ghosts are scaffolding: pawns stand on them freely (solid fills need it),
+## but a cell is never built while anyone occupies it.
 func _tick_build(ctx: AiContext, i: int, dt: float) -> void:
 	var cell := _cell_of(ctx.world, positions[i])
-	# Politeness: never loiter on someone's construction site.
-	if ctx.blueprints.has_at(cell):
-		if not _step_off_blueprints(ctx, i, cell, dt):
-			_complete(i)
-		return
 	var claim := build_claims[i]
 	if claim >= 0 and (not ctx.blueprints.has_at(claim) or not _cells_adjacent(ctx.world, cell, claim)):
 		claim = -1
@@ -294,6 +304,7 @@ func _tick_build(ctx: AiContext, i: int, dt: float) -> void:
 	if claim >= 0:
 		targets[i] = positions[i]
 		if not ctx.blueprints.add_worker(claim):
+			build_cooldowns[i] = ctx.tick + 45
 			_complete(i)  # crowded this tick; re-decide
 			return
 		var built := ctx.blueprints.add_work(claim, dt)
@@ -303,20 +314,27 @@ func _tick_build(ctx: AiContext, i: int, dt: float) -> void:
 				_displace_from(ctx.world, claim)
 			_complete(i)
 		return
-	# No workable job here: travel toward the blueprints (never stepping
-	# onto one), or give up and re-decide.
+	# No workable job here: travel toward the build frontier, stopping one
+	# cell short of the goal (you can't build what you stand on). Blocked or
+	# out of road: cool down so we don't statue in place on a stale field.
 	if ctx.blueprint_field == null or not _follow_field(ctx, i, ctx.blueprint_field, dt, true):
+		build_cooldowns[i] = ctx.tick + 45
 		_complete(i)
 
 
-## Adjacent blueprint with worker capacity that is safe to build. Walls are
-## checked against the pocket rule: pretend it's built — can I still reach
-## open ground from where I stand?
+## Adjacent blueprint with worker capacity that is safe to build: never one
+## someone is standing on; walls are checked against the pocket rule
+## (pretend it's built — can I still reach open ground from where I
+## stand?); the deepest candidate wins, so clusters complete inside-out.
 func _pick_adjacent_blueprint(ctx: AiContext, cell: int) -> int:
+	if ctx.blueprint_field == null:
+		return -1
 	var w := ctx.world.width
 	@warning_ignore("integer_division")
 	var cy := cell / w
 	var cx := cell % w
+	var best := -1
+	var best_depth := -1
 	for d: int in 8:
 		var nx := cx + FlowField.DX[d]
 		var ny := cy + FlowField.DY[d]
@@ -324,11 +342,39 @@ func _pick_adjacent_blueprint(ctx: AiContext, cell: int) -> int:
 		var idx: int = ctx.blueprints.cell_lookup.get(ncell, -1)
 		if idx < 0 or ctx.blueprints.workers[idx] >= Blueprints.MAX_WORKERS_PER_CELL:
 			continue
+		# Workface discipline: only cells on the current build frontier
+		# (field goals) may be worked. An adjacent blueprint that isn't a
+		# goal is someone's future scaffold — building it early is how you
+		# seal a solid fill's interior off (the outer-shell bug).
+		if ctx.blueprint_field.distances[ncell] != 0:
+			continue
+		if ctx.occupied.has(ncell):
+			continue
 		if int(ctx.blueprints.types[idx]) == SimWorld.STRUCT_WALL:
 			if Reachability.pocket_size(ctx.world, cell, ncell, 48) < 48:
 				continue
-		return ncell
-	return -1
+		var cand_depth := _local_depth(ctx, ncell)
+		if cand_depth > best_depth:
+			best_depth = cand_depth
+			best = ncell
+	return best
+
+
+## How buried a blueprint cell is: count of 4-dir neighbors that are
+## blueprints or walls. Deeper cells must be built first.
+func _local_depth(ctx: AiContext, cell: int) -> int:
+	var w := ctx.world.width
+	@warning_ignore("integer_division")
+	var cy := cell / w
+	var cx := cell % w
+	var depth := 0
+	for d: int in 4:
+		var ncell := (cy + FlowField.DY[d]) * w + cx + FlowField.DX[d]
+		if ctx.blueprints.has_at(ncell):
+			depth += 1
+		elif ctx.world.structure_at_cell(ncell) == SimWorld.STRUCT_WALL:
+			depth += 1
+	return depth
 
 
 ## Move one tile off any blueprint cell. Returns false when boxed in.
@@ -354,6 +400,26 @@ static func _cells_adjacent(world: SimWorld, a: int, b: int) -> bool:
 	var dy := absi(a / w - b / w)
 	var dx := absi(a % w - b % w)
 	return maxi(dx, dy) == 1
+
+
+## Safety net: a pawn can transiently end up inside fresh construction
+## (walked through a cell the tick it completed). Teleport to the nearest
+## walkable cell, scanning outward deterministically.
+func _rescue_if_stuck(world: SimWorld, i: int) -> void:
+	var x := floori(positions[i].x)
+	var y := floori(positions[i].y)
+	if world.is_walkable(x, y):
+		return
+	for radius: int in range(1, 6):
+		for dy: int in range(-radius, radius + 1):
+			for dx: int in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dy)) != radius:
+					continue
+				if world.is_walkable(x + dx, y + dy):
+					positions[i] = Vector2(x + dx + 0.5, y + dy + 0.5) + jitter[i]
+					prev_positions[i] = positions[i]
+					_complete(i)
+					return
 
 
 ## A blocking structure just appeared at this cell: move any pawns standing
@@ -389,9 +455,9 @@ func _tick_wander(ctx: AiContext, i: int, dt: float) -> void:
 ## Step along a flow field, advancing through cell-sized targets within
 ## this tick's movement budget. Returns false when there is nowhere further
 ## to go (goal reached, unreachable, or blocked by fresh construction).
-## With avoid_blueprints, stops rather than stepping onto a blueprint cell.
+## With stop_before_goal, halts one cell short instead of entering the goal.
 func _follow_field(
-	ctx: AiContext, i: int, field: FlowField, dt: float, avoid_blueprints := false
+	ctx: AiContext, i: int, field: FlowField, dt: float, stop_before_goal := false
 ) -> bool:
 	var remaining := speeds[i] * dt
 	var advances := 0
@@ -420,7 +486,7 @@ func _follow_field(
 			if dir.x != 0 and dir.y != 0:
 				if not ctx.world.is_walkable(nx, cy) or not ctx.world.is_walkable(cx, ny):
 					return false
-			if avoid_blueprints and ctx.blueprints.has_at(ny * ctx.world.width + nx):
+			if stop_before_goal and field.distances[ny * ctx.world.width + nx] == 0:
 				return false
 			targets[i] = Vector2(nx, ny) + Vector2(0.5, 0.5) + jitter[i]
 			advances += 1
