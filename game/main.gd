@@ -181,7 +181,7 @@ func _process(delta: float) -> void:
 			avg_tick_ms = ms if avg_tick_ms == 0.0 else lerpf(avg_tick_ms, ms, 0.05)
 
 	var alpha := clampf(accumulator / Simulation.TICK_DT, 0.0, 1.0)
-	actor_renderer.sync(sim.actors, alpha)
+	actor_renderer.sync(sim.actors, alpha, cam.zoom.x)
 	bush_renderer.sync(sim.bushes)
 	structure_renderer.sync(sim.world, sim.blueprints)
 	_pan_camera(delta)
@@ -322,14 +322,20 @@ func _apply_field_overlay() -> void:
 func _zoom(direction: int) -> void:
 	zoom_idx = clampi(zoom_idx + direction, 0, ZOOM_STEPS.size() - 1)
 	cam.zoom = Vector2.ONE * ZOOM_STEPS[zoom_idx]
+	cam.position = _snap_screen_px(_cam_pos)
 
 
 ## All camera placement goes through here so the continuous pan position
-## stays in sync — the camera itself rides the whole-pixel grid so sprite
-## texels never straddle screen pixels (mixels).
+## stays in sync — the camera rides the screen-pixel grid so texels never
+## straddle screen pixels (mixels), while panning stays visually smooth.
 func _place_camera(pos: Vector2) -> void:
 	_cam_pos = pos
-	cam.position = pos.round()
+	cam.position = _snap_screen_px(pos)
+
+
+func _snap_screen_px(pos: Vector2) -> Vector2:
+	var z := cam.zoom.x
+	return (pos * z).round() / z
 
 
 func _pan_camera(delta: float) -> void:
@@ -337,7 +343,7 @@ func _pan_camera(delta: float) -> void:
 	if dir == Vector2.ZERO:
 		return
 	_cam_pos += dir * PAN_SPEED * delta / cam.zoom.x
-	cam.position = _cam_pos.round()
+	cam.position = _snap_screen_px(_cam_pos)
 
 
 func _update_hud() -> void:

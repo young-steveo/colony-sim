@@ -56,7 +56,7 @@ func setup(_world_seed: int) -> void:
 	_last_px = PackedVector2Array()
 
 
-func sync(actors: ActorPool, alpha: float) -> void:
+func sync(actors: ActorPool, alpha: float, zoom: float) -> void:
 	if actors.count > _capacity:
 		_grow(actors)
 	multimesh.visible_instance_count = actors.count
@@ -65,9 +65,11 @@ func sync(actors: ActorPool, alpha: float) -> void:
 	var cell_uv := Vector2(1.0 / SHEET_COLS, 1.0 / SHEET_ROWS)
 	for i: int in actors.count:
 		var p := actors.prev_positions[i].lerp(actors.positions[i], alpha) * px
-		# Snap to whole world pixels: sprite texels stay on the art grid
-		# (no mixels), and frame edges never sample into neighboring cells.
-		multimesh.set_instance_transform_2d(i, Transform2D(0.0, (p + feet_offset).round()))
+		# Snap to the screen-pixel grid (not whole world pixels): texels stay
+		# uniform on screen, while motion steps by one screen pixel — smooth
+		# to the eye instead of chunky world-pixel pops.
+		var snapped := ((p + feet_offset) * zoom).round() / zoom
+		multimesh.set_instance_transform_2d(i, Transform2D(0.0, snapped))
 		var vel := actors.positions[i] - actors.prev_positions[i]
 		var frame := 0
 		if vel.length_squared() > 0.000001:

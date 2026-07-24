@@ -528,8 +528,9 @@ slightly; large entities (trees ~16×32, big creatures, furniture) will exceed
 it and need Y-sorting/occlusion (actors walk behind a tree's canopy) when
 they arrive. Default camera zoom
 is 3.0 (48 screen px per tile — chunky-first; revised from 2.0 on first
-sight of real sprites in-game, July 2026). Zoom steps are integer-locked
-and the camera/actors snap to whole world pixels — mixels are a bug. **Art direction session still pending** for
+sight of real sprites in-game, July 2026). Zoom steps are integer-locked, the window stretch scales by integer
+factors only, and the camera/actors snap to the screen-pixel grid (fine
+enough to read as smooth motion) — mixels are a bug. **Art direction session still pending** for
 style, ramps, and animation. Stephen does the pixel art (and is a musician —
 original music in-house is plausible); opengameart.org for free SFX as
 filler.
