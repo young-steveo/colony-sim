@@ -32,10 +32,14 @@ Current layout:
   slightly overhang the 16×16 square.
 - `terrain/` — one sheet per material (`dirt.png` + `dirt.pyxel`), flat
   until a material needs more files. Constructed floors are terrain materials
-  too. Each sheet is a standard autotile set (blob or marching-squares
-  template — consistent across materials) with one rule: transition tiles are
-  drawn against **transparency**, never baked against a specific neighbor
-  (per-pair sets are O(n²) and mod-hostile). The renderer draws the substrate
+  too. Each sheet is the standard **47-tile blob template, 12×4 cells, plus
+  a bottom row of alternate "fully surrounded" interior tiles** (12×5 total,
+  192×80 px) — same cell arrangement in every sheet; the cell→bitmask map is
+  written once against the first real sheet. The template's own interior
+  tile is variant #0; the loader hash-picks among it and whatever non-empty
+  cells exist in the variant row. Transitions stay inside their own 16px
+  cell and are drawn against **transparency**, never baked against a
+  specific neighbor (per-pair sets are O(n²) and mod-hostile). The renderer draws the substrate
   first, then the higher blend-priority material's overlay tiles on top, so
   one set works over any neighbor. Cell-to-role mapping goes in the
   material's data entry when terrain goes data-driven. Grass is likely
