@@ -266,10 +266,12 @@ func _tick_eat(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> v
 
 
 func _tick_sleep(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> void:
-	# Don't bed down on someone's construction site.
+	# Prefer not to bed down on someone's construction site — but if
+	# there's no open ground one step away (deep in a painted field),
+	# sleep on the ghost anyway: the occupancy rule defers that cell's
+	# construction, and an unsleepable pawn is a starving deadlock.
 	var cell := _cell_of(ctx.world, positions[i])
-	if ctx.blueprints.has_at(cell):
-		var _moved := _step_off_blueprints(ctx, i, cell, dt)
+	if ctx.blueprints.has_at(cell) and _step_off_blueprints(ctx, i, cell, dt):
 		return
 	var rest_idx := action.considerations[0].need_idx
 	needs[rest_idx][i] = minf(needs[rest_idx][i] + action.restore_per_second * dt, 1.0)
@@ -312,7 +314,11 @@ func _tick_build(ctx: AiContext, i: int, dt: float) -> void:
 			ctx.world.set_structure(claim, built)
 			if built == SimWorld.STRUCT_WALL:
 				_displace_from(ctx.world, claim)
-			_complete(i)
+			# Stay on the job: clear the claim and pick the next adjacent
+			# frontier cell next tick. (Needs still preempt at the regular
+			# decide cadence.) Re-rolling life plans after every wall is
+			# how construction turns into a colony-wide relay race.
+			build_claims[i] = -1
 		return
 	# No workable job here: travel toward the build frontier, stopping one
 	# cell short of the goal (you can't build what you stand on). Blocked or
@@ -327,8 +333,6 @@ func _tick_build(ctx: AiContext, i: int, dt: float) -> void:
 ## (pretend it's built — can I still reach open ground from where I
 ## stand?); the deepest candidate wins, so clusters complete inside-out.
 func _pick_adjacent_blueprint(ctx: AiContext, cell: int) -> int:
-	if ctx.blueprint_field == null:
-		return -1
 	var w := ctx.world.width
 	@warning_ignore("integer_division")
 	var cy := cell / w
@@ -342,11 +346,13 @@ func _pick_adjacent_blueprint(ctx: AiContext, cell: int) -> int:
 		var idx: int = ctx.blueprints.cell_lookup.get(ncell, -1)
 		if idx < 0 or ctx.blueprints.workers[idx] >= Blueprints.MAX_WORKERS_PER_CELL:
 			continue
-		# Workface discipline: only cells on the current build frontier
-		# (field goals) may be worked. An adjacent blueprint that isn't a
-		# goal is someone's future scaffold — building it early is how you
-		# seal a solid fill's interior off (the outer-shell bug).
-		if ctx.blueprint_field.distances[ncell] != 0:
+		# Workface discipline: only cells on the current build frontier may
+		# be worked. An adjacent blueprint that isn't a frontier cell is
+		# someone's future scaffold — building it early is how you seal a
+		# solid fill's interior off (the outer-shell bug). The frontier is
+		# LIVE (cached per blueprint change), never the stale async field:
+		# a builder finishing the center must find the ring workable now.
+		if not ctx.blueprints.is_frontier(ctx.world, ncell):
 			continue
 		if ctx.occupied.has(ncell):
 			continue

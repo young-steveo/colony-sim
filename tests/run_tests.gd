@@ -355,13 +355,23 @@ func _test_building() -> void:
 			for dy: int in 5:
 				var _w2: bool = s.place_blueprint(sx + dx, sy + dy, SimWorld.STRUCT_WALL)
 		s.spawn_actors(12)
-	for t: int in 9000:
+	var rest_idx2 := sim_d.defs.need_index(&"rest")
+	var pinned_rest := 0
+	for t: int in 4500:
 		sim_d.tick()
 		sim_e.tick()
+		if t % 50 == 0:
+			var worst := 0
+			for i: int in sim_d.actors.count:
+				if sim_d.actors.needs[rest_idx2][i] < 0.001:
+					worst += 1
+			pinned_rest = maxi(pinned_rest, worst)
 	_check(
 		sim_d.blueprints.cells.size() == 0,
-		"solid 5x5 fully built (%d blueprints left)" % sim_d.blueprints.cells.size()
+		"solid 5x5 built at a working pace, 4500 ticks (%d blueprints left)"
+			% sim_d.blueprints.cells.size()
 	)
+	_check(pinned_rest == 0, "no pawn ever pinned at zero rest (sleep deadlock)")
 	var solid := true
 	for dx: int in 5:
 		for dy: int in 5:

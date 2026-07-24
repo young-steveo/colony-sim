@@ -40,7 +40,6 @@ var _blueprint_version_seen := 0
 var _structures_version_seen := 0
 var _walkability_dirty := false
 var _build_action_idx := -1
-var _frontier_count := 0
 var _jobs: Dictionary = {}  # StringName -> _FieldJob in flight
 
 
@@ -86,7 +85,7 @@ func tick() -> void:
 		_dispatch_stale_fields()
 	blueprints.reset_workers()
 	_ctx.build_workers = _count_build_workers()
-	_ctx.build_capacity = _frontier_count
+	_ctx.build_capacity = blueprints.frontier_count(world)
 	_ctx.occupied.clear()
 	for i: int in actors.count:
 		var p := actors.positions[i]
@@ -151,9 +150,7 @@ func _dispatch_stale_fields() -> void:
 
 
 func _dispatch_blueprint_field() -> void:
-	var frontier := blueprints.frontier_goals(world)
-	_frontier_count = frontier.size()
-	_dispatch_field(&"blueprint", frontier)
+	_dispatch_field(&"blueprint", blueprints.frontier_goals(world))
 
 
 func _bed_goals() -> PackedInt32Array:

@@ -25,6 +25,14 @@ var workers := PackedByteArray()  # workers this tick; reset by the sim
 var cell_lookup := {}
 var version := 1  # bumps on place/cancel/complete — goal set changed
 
+# Live frontier cache (see frontier_goals), lazily refreshed on version
+# change. The async flow field routes travelers; workface truth — "is this
+# cell buildable right now" — must never be stale, or construction
+# trickles: a builder finishing the center of a solid fill needs the ring
+# around it workable immediately, not after the next field install.
+var _frontier := {}
+var _frontier_version := 0
+
 
 func has_at(cell: int) -> bool:
 	return cell_lookup.has(cell)
@@ -80,9 +88,31 @@ func goal_cells() -> PackedInt32Array:
 ## Construction ordering — instead of sealing their own interiors off.
 ## Unreachable blueprints (no path from open ground) are excluded.
 func frontier_goals(world: SimWorld) -> PackedInt32Array:
+	_refresh_frontier(world)
 	var goals := PackedInt32Array()
+	for cell: int in _frontier:
+		var _e: bool = goals.push_back(cell)
+	goals.sort()  # dictionary order isn't contractual; determinism is
+	return goals
+
+
+func is_frontier(world: SimWorld, cell: int) -> bool:
+	_refresh_frontier(world)
+	return _frontier.has(cell)
+
+
+func frontier_count(world: SimWorld) -> int:
+	_refresh_frontier(world)
+	return _frontier.size()
+
+
+func _refresh_frontier(world: SimWorld) -> void:
+	if _frontier_version == version:
+		return
+	_frontier_version = version
+	_frontier.clear()
 	if cells.is_empty():
-		return goals
+		return
 	var w := world.width
 	# Layered BFS inward: seed with blueprints touching open (non-blueprint,
 	# walkable) ground at depth 1, then flood through blueprint adjacency.
@@ -132,8 +162,7 @@ func frontier_goals(world: SimWorld) -> PackedInt32Array:
 				deepest = false
 				break
 		if deepest:
-			var _e3: bool = goals.push_back(cell)
-	return goals
+			_frontier[cell] = true
 
 
 func type_at(cell: int) -> int:
