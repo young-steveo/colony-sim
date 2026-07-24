@@ -14,3 +14,4 @@ var bed_field: FlowField
 var blueprint_field: FlowField
 var command_field: FlowField
 var tick := 0
+var build_workers := 0  # pawns currently on the build action (last tick's count)

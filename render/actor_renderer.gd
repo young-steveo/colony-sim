@@ -4,9 +4,10 @@ extends MultiMeshInstance2D
 ## per-actor nodes. Positions interpolate between the last two sim ticks so
 ## movement stays smooth regardless of sim tick rate.
 
-# Character proportion experiment: 1 tile wide, 2 tall (16x32 on the 16px
-# grid), anchored at the feet — the sim position is ground contact.
-const ACTOR_SIZE := Vector2(16.0, 32.0)
+# Character proportion: 1 tile wide, 1.5 tall (16x24 on the 16px grid),
+# anchored at the feet — the sim position is ground contact. 16x32 towered
+# over 16px walls; 24 keeps heads above the parapet without stilts.
+const ACTOR_SIZE := Vector2(16.0, 24.0)
 
 var _capacity := 0
 var _world_seed := 0

@@ -299,6 +299,37 @@ func _test_building() -> void:
 		"building run fully deterministic"
 	)
 
+	# Crowding: one door among 40 idle pawns must draw a small crew, not
+	# the whole colony.
+	var sim_c := Simulation.new(23, 96, 96)
+	sim_c.spawn_actors(40)
+	var dx2 := -1
+	var dy2 := -1
+	for y: int in range(40, 90):
+		for x: int in range(4, 90):
+			if sim_c.world.is_walkable(x, y):
+				dx2 = x
+				dy2 = y
+				break
+		if dy2 >= 0:
+			break
+	var _p2: bool = sim_c.place_blueprint(dx2, dy2, SimWorld.STRUCT_DOOR)
+	var build_idx := sim_c.defs.action_index(&"build")
+	var max_builders := 0
+	for t: int in 900:
+		sim_c.tick()
+		var builders := 0
+		for i: int in sim_c.actors.count:
+			if sim_c.actors.current_action[i] == build_idx:
+				builders += 1
+		max_builders = maxi(max_builders, builders)
+	_check(max_builders >= 1, "someone answered the build job")
+	_check(
+		max_builders <= 6,
+		"one door draws a crew, not a colony (max %d builders)" % max_builders
+	)
+	_check(sim_c.blueprints.cells.size() == 0, "the door still got built")
+
 
 func _test_simulation() -> void:
 	print("Simulation:")

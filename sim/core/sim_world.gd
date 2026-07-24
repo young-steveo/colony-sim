@@ -45,6 +45,19 @@ func set_structure(cell: int, type: int) -> void:
 	structures_version += 1
 
 
+## Walkability as a flat 0/1 byte grid with the border ring forced to 0 —
+## the immutable input flow-field builds consume (safe to hand to a worker
+## thread; the sim can keep mutating the live world meanwhile).
+func walkability_snapshot() -> PackedByteArray:
+	var walk := PackedByteArray()
+	var _e: int = walk.resize(width * height)
+	for y: int in height:
+		var row := y * width
+		for x: int in width:
+			walk[row + x] = 1 if is_walkable(x, y) else 0
+	return walk
+
+
 func is_walkable(x: int, y: int) -> bool:
 	# The outermost ring is impassable by rule: it keeps every system
 	# (spawns, sites, flow fields) consistent and lets pathfinding skip

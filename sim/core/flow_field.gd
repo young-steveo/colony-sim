@@ -24,8 +24,16 @@ var flow_dir := PackedByteArray()
 
 
 static func build(world: SimWorld, goal_cells: PackedInt32Array) -> FlowField:
+	return build_from_walk(world.width, world.height, world.walkability_snapshot(), goal_cells)
+
+
+## Pure-data build: walkability comes in as a snapshot, so this is safe to
+## run on a worker thread while the live world keeps mutating.
+static func build_from_walk(
+	map_width: int, map_height: int, walk: PackedByteArray, goal_cells: PackedInt32Array
+) -> FlowField:
 	var f := FlowField.new()
-	f._build(world, goal_cells)
+	f._build(map_width, map_height, walk, goal_cells)
 	return f
 
 
@@ -41,26 +49,16 @@ func direction_at_cell(cell: int) -> Vector2i:
 	return Vector2i(DX[d], DY[d])
 
 
-func _build(world: SimWorld, goal_cells: PackedInt32Array) -> void:
-	width = world.width
-	height = world.height
+func _build(
+	map_width: int, map_height: int, walk: PackedByteArray, goal_cells: PackedInt32Array
+) -> void:
+	width = map_width
+	height = map_height
 	var cell_count := width * height
 
-	# Local 0/1 walkability lookup keeps the hot loops branch-light. The
-	# border ring is forced to 0 so neighbor arithmetic below never needs
-	# bounds checks: no interior cell's neighbor offset can escape the array.
-	var walk := PackedByteArray()
-	var _err: int = walk.resize(cell_count)
-	for y: int in height:
-		var row := y * width
-		for x: int in width:
-			walk[row + x] = 1 if world.is_walkable(x, y) else 0
-	for x: int in width:
-		walk[x] = 0
-		walk[(height - 1) * width + x] = 0
-	for y: int in height:
-		walk[y * width] = 0
-		walk[y * width + width - 1] = 0
+	# The snapshot's border ring is 0 (SimWorld.walkability_snapshot), so
+	# neighbor arithmetic below never needs bounds checks: no interior
+	# cell's neighbor offset can escape the array.
 
 	# Neighbor cell-index offsets in DX/DY order, plus the two orthogonal
 	# offsets that gate each diagonal (corner-cutting rule).

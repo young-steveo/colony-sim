@@ -64,6 +64,10 @@
 					"input": "blueprint_distance",
 					"input_max": 400.0,
 					"curve": { "type": "poly", "m": -1.0, "k": 1.0, "b": 1.0, "c": 0.0 }
+				},
+				{
+					"input": "build_crowding",
+					"curve": { "type": "poly", "m": -1.0, "k": 3.0, "b": 1.0, "c": 0.0 }
 				}
 			]
 		},
