@@ -10,6 +10,7 @@ var _passes := 0
 func _init() -> void:
 	_test_rng()
 	_test_map_gen()
+	_test_flow_field()
 	_test_simulation()
 	print("")
 	print("%d passed, %d failed" % [_passes, _failures])
@@ -94,6 +95,59 @@ func _test_map_gen() -> void:
 	_check(walkable > 64 * 64 / 4, "map is at least 25%% walkable (got %d/4096)" % walkable)
 
 
+@warning_ignore("integer_division")
+func _test_flow_field() -> void:
+	print("FlowField:")
+	var w := SimWorld.new(42, 96, 96)
+	var goal := -1
+	for c: int in w.width * w.height:
+		if w.is_walkable(c % w.width, c / w.width):
+			goal = c
+			break
+	var f := FlowField.build(w, PackedInt32Array([goal]))
+	var f2 := FlowField.build(w, PackedInt32Array([goal]))
+	_check(f.distances == f2.distances and f.flow_dir == f2.flow_dir, "build is deterministic")
+	_check(f.distances[goal] == 0, "goal distance is zero")
+
+	var descends := true
+	var corners_ok := true
+	var unwalkable_ok := true
+	var farthest := goal
+	for c: int in w.width * w.height:
+		var x := c % w.width
+		var y := c / w.width
+		if not w.is_walkable(x, y):
+			if f.distances[c] != FlowField.UNREACHABLE:
+				unwalkable_ok = false
+			continue
+		var dist := f.distances[c]
+		if dist == FlowField.UNREACHABLE or dist == 0:
+			continue
+		if dist > f.distances[farthest] and f.distances[farthest] != FlowField.UNREACHABLE:
+			farthest = c
+		var d := f.flow_dir[c]
+		if d == FlowField.NO_DIR:
+			descends = false
+			continue
+		var nx := x + FlowField.DX[d]
+		var ny := y + FlowField.DY[d]
+		if f.distances[ny * w.width + nx] >= dist:
+			descends = false
+		if d >= 4 and (not w.is_walkable(nx, y) or not w.is_walkable(x, ny)):
+			corners_ok = false
+	_check(unwalkable_ok, "unwalkable cells are unreachable")
+	_check(descends, "every reachable cell strictly descends")
+	_check(corners_ok, "no diagonal corner cutting")
+
+	var c := farthest
+	var steps := 0
+	while f.distances[c] > 0 and steps < w.width * w.height:
+		var d := f.flow_dir[c]
+		c += FlowField.DY[d] * w.width + FlowField.DX[d]
+		steps += 1
+	_check(f.distances[c] == 0, "downhill walk from farthest cell reaches the goal")
+
+
 func _test_simulation() -> void:
 	print("Simulation:")
 	var sim_a := Simulation.new(7, 96, 96)
@@ -109,10 +163,24 @@ func _test_simulation() -> void:
 			all_walkable = false
 	_check(all_walkable, "actors spawn on walkable tiles")
 
-	for t: int in 200:
+	var stayed_walkable := true
+	for t: int in 300:
 		sim_a.tick()
 		sim_b.tick()
+		if t % 50 == 0:
+			for i: int in sim_a.actors.count:
+				var p := sim_a.actors.positions[i]
+				if not sim_a.world.is_walkable(floori(p.x), floori(p.y)):
+					stayed_walkable = false
 
-	_check(sim_a.actors.positions == sim_b.actors.positions, "200 ticks fully deterministic")
+	_check(sim_a.actors.positions == sim_b.actors.positions, "300 ticks fully deterministic")
 	_check(sim_a.actors.positions != spawn_positions, "actors actually move")
-	_check(sim_a.tick_count == 200, "tick count advances")
+	_check(stayed_walkable, "actors never leave walkable ground")
+	_check(sim_a.sites.size() > 0, "sites were placed")
+	_check(sim_a.tick_count == 300, "tick count advances")
+
+	var travelling := 0
+	for i: int in sim_a.actors.count:
+		if sim_a.actors.site_index[i] != ActorPool.NO_SITE:
+			travelling += 1
+	_check(travelling > sim_a.actors.count / 2, "most actors are travelling to sites")

@@ -27,7 +27,10 @@ func tile_at(x: int, y: int) -> int:
 
 
 func is_walkable(x: int, y: int) -> bool:
-	if x < 0 or y < 0 or x >= width or y >= height:
+	# The outermost ring is impassable by rule: it keeps every system
+	# (spawns, sites, flow fields) consistent and lets pathfinding skip
+	# bounds checks via border sentinels.
+	if x < 1 or y < 1 or x >= width - 1 or y >= height - 1:
 		return false
 	var t := tiles[y * width + x]
 	return t == TILE_SAND or t == TILE_GRASS

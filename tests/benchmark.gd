@@ -11,6 +11,15 @@ const MEASURED_TICKS := 600
 
 
 func _init() -> void:
+	var t_map := Time.get_ticks_usec()
+	var world0 := SimWorld.new(42, 256, 256)
+	var map_ms := float(Time.get_ticks_usec() - t_map) / 1000.0
+	var t_field := Time.get_ticks_usec()
+	var field0 := FlowField.build(world0, PackedInt32Array([world0.width * 128 + 128]))
+	var field_ms := float(Time.get_ticks_usec() - t_field) / 1000.0
+	print("256x256 map gen: %.0f ms | one flow field: %.0f ms (reached %d cells)" % [
+		map_ms, field_ms, field0.distances.count(0) + 1,
+	])
 	print("actors | ms/tick | %% of 30tps frame budget (33.3 ms)")
 	for n: int in COUNTS:
 		var sim := Simulation.new(42)
