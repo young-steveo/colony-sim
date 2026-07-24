@@ -6,9 +6,6 @@ extends Node2D
 ## it grows from. Doors and beds stay palette boxes until their art lands.
 ## Rebuilt only when the sim's structure or blueprint versions change.
 
-# Named drift (content/README.md): every wall material renders with the wood
-# sheet until structures go data-driven.
-const WALL_SHEET := preload("res://content/structures/wall_wood.png")
 const BLOB_SHADER := preload("res://render/autotile_blob.gdshader")
 const GHOST_TINT := Color(0.75, 0.87, 1.0, 0.45)
 const GHOST_ALPHA := 0.35  # box ghosts (door/bed)
@@ -18,21 +15,26 @@ static var _COLORS: Dictionary = {
 	SimWorld.STRUCT_BED: Palette.COLORS[47],
 }
 
-var _walls: MultiMeshInstance2D
+var _wall_layers: Array[MultiMeshInstance2D] = []
 var _boxes: MultiMeshInstance2D
 var _structures_seen := -1
 var _blueprints_seen := -1
 
 
-func setup() -> void:
-	_walls = MultiMeshInstance2D.new()
-	_walls.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_walls.texture = WALL_SHEET
-	var mat := ShaderMaterial.new()
-	mat.shader = BLOB_SHADER
-	_walls.material = mat
-	_walls.multimesh = _make_multimesh(true)
-	add_child(_walls)
+## One wall layer per material in the defs — walls of every material share
+## connectivity but draw from their own sheet.
+func setup(defs: StructureDefs) -> void:
+	_wall_layers = []
+	for m: int in defs.wall_material_count():
+		var layer := MultiMeshInstance2D.new()
+		layer.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		layer.texture = load(defs.wall_material_sheets[m])
+		var mat := ShaderMaterial.new()
+		mat.shader = BLOB_SHADER
+		layer.material = mat
+		layer.multimesh = _make_multimesh(true)
+		add_child(layer)
+		_wall_layers.append(layer)
 
 	_boxes = MultiMeshInstance2D.new()
 	_boxes.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -60,17 +62,20 @@ func sync(world: SimWorld, blueprints: Blueprints) -> void:
 	_structures_seen = world.structures_version
 	_blueprints_seen = blueprints.version
 
-	# Wall presence map (built or blueprint) drives connectivity: 0 none,
-	# 1 built, 2 blueprint. Doors are deliberately absent — walls cap at a
-	# doorframe.
+	# Wall presence map (built or blueprint, any material) drives
+	# connectivity: 0 none, 1 built, 2 blueprint. Doors are deliberately
+	# absent — walls cap at a doorframe.
 	var walls := PackedByteArray()
 	var _r: int = walls.resize(world.width * world.height)
+	var wall_mats := PackedByteArray()
+	var _r2: int = wall_mats.resize(world.width * world.height)
 	var box_cells := PackedInt32Array()
 	var box_colors := PackedColorArray()
 	for cell: int in world.width * world.height:
 		var type := int(world.structures[cell])
 		if type == SimWorld.STRUCT_WALL:
 			walls[cell] = 1
+			wall_mats[cell] = world.structure_materials[cell]
 		elif type != SimWorld.STRUCT_NONE:
 			var _e1: bool = box_cells.push_back(cell)
 			var _e2: bool = box_colors.push_back(_COLORS[type])
@@ -78,27 +83,31 @@ func sync(world: SimWorld, blueprints: Blueprints) -> void:
 		var type := int(blueprints.types[b])
 		if type == SimWorld.STRUCT_WALL:
 			walls[blueprints.cells[b]] = 2
+			wall_mats[blueprints.cells[b]] = blueprints.materials[b]
 		else:
 			var ghost: Color = _COLORS[type]
 			ghost.a = GHOST_ALPHA
 			var _e3: bool = box_cells.push_back(blueprints.cells[b])
 			var _e4: bool = box_colors.push_back(ghost)
 
-	_sync_walls(world, walls)
+	_sync_walls(world, walls, wall_mats)
 	_sync_boxes(world, box_cells, box_colors)
 
 
-func _sync_walls(world: SimWorld, walls: PackedByteArray) -> void:
+func _sync_walls(world: SimWorld, walls: PackedByteArray, wall_mats: PackedByteArray) -> void:
 	var w := world.width
 	var h := world.height
 	var px := float(TerrainRenderer.TILE_PX)
-	var count := 0
+	var counts := PackedInt32Array()
+	var _rc: int = counts.resize(_wall_layers.size())
 	for cell: int in walls.size():
 		if walls[cell] != 0:
-			count += 1
-	_walls.multimesh.instance_count = count
-	_walls.multimesh.visible_instance_count = count
-	var i := 0
+			counts[mini(int(wall_mats[cell]), _wall_layers.size() - 1)] += 1
+	for m: int in _wall_layers.size():
+		_wall_layers[m].multimesh.instance_count = counts[m]
+		_wall_layers[m].multimesh.visible_instance_count = counts[m]
+	var next := PackedInt32Array()
+	var _rn: int = next.resize(_wall_layers.size())
 	for cell: int in walls.size():
 		if walls[cell] == 0:
 			continue
@@ -112,10 +121,13 @@ func _sync_walls(world: SimWorld, walls: PackedByteArray) -> void:
 			_has(walls, w, h, x - 1, y + 1), _has(walls, w, h, x - 1, y - 1))
 		var uv := Autotile.cell_uv(Autotile.cell_for(mask))
 		var pos := Vector2(x + 0.5, y + 0.5) * px
-		_walls.multimesh.set_instance_transform_2d(i, Transform2D(0.0, pos))
-		_walls.multimesh.set_instance_custom_data(i, Color(uv.x, uv.y, 0.0, 0.0))
-		_walls.multimesh.set_instance_color(i, Color.WHITE if walls[cell] == 1 else GHOST_TINT)
-		i += 1
+		var m := mini(int(wall_mats[cell]), _wall_layers.size() - 1)
+		var mm := _wall_layers[m].multimesh
+		var i := next[m]
+		next[m] += 1
+		mm.set_instance_transform_2d(i, Transform2D(0.0, pos))
+		mm.set_instance_custom_data(i, Color(uv.x, uv.y, 0.0, 0.0))
+		mm.set_instance_color(i, Color.WHITE if walls[cell] == 1 else GHOST_TINT)
 
 
 static func _has(walls: PackedByteArray, w: int, h: int, x: int, y: int) -> bool:

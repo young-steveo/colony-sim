@@ -317,9 +317,10 @@ func _tick_build(ctx: AiContext, i: int, dt: float) -> void:
 			build_cooldowns[i] = ctx.tick + 45
 			_complete(i)  # crowded this tick; re-decide
 			return
+		var mat := ctx.blueprints.material_at(claim)
 		var built := ctx.blueprints.add_work(claim, dt)
 		if built != SimWorld.STRUCT_NONE:
-			ctx.world.set_structure(claim, built)
+			ctx.world.set_structure(claim, built, mat)
 			if built == SimWorld.STRUCT_WALL:
 				_displace_from(ctx.world, claim)
 			# Stay on the job: clear the claim and pick the next adjacent

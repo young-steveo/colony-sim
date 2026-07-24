@@ -13,6 +13,7 @@ func _init() -> void:
 	_test_flow_field()
 	_test_ai()
 	_test_building()
+	_test_wall_materials()
 	_test_simulation()
 	print("")
 	print("%d passed, %d failed" % [_passes, _failures])
@@ -401,6 +402,38 @@ func _test_building() -> void:
 			and sim_d.world.structures == sim_e.world.structures,
 		"solid-fill run fully deterministic"
 	)
+
+
+func _test_wall_materials() -> void:
+	print("Wall materials:")
+	var sim := Simulation.new(11, 96, 96)
+	_check(sim.structure_defs.wall_material_count() >= 2, "defs load with >= 2 wall materials")
+
+	# Three walls: wood, marble, marble. Cancel the first — swap-remove must
+	# keep materials attached to the right cells.
+	var y := -1
+	for cy: int in range(2, 90):
+		if sim.world.is_walkable(10, cy) and sim.world.is_walkable(11, cy) and sim.world.is_walkable(12, cy):
+			y = cy
+			break
+	_check(y >= 0, "found a walkable strip")
+	var _p1: bool = sim.place_blueprint(10, y, SimWorld.STRUCT_WALL, 0)
+	var _p2: bool = sim.place_blueprint(11, y, SimWorld.STRUCT_WALL, 1)
+	var _p3: bool = sim.place_blueprint(12, y, SimWorld.STRUCT_WALL, 1)
+	var c1 := y * sim.world.width + 10
+	var c2 := y * sim.world.width + 11
+	var c3 := y * sim.world.width + 12
+	var _c: bool = sim.cancel_blueprint(10, y)
+	_check(sim.blueprints.material_at(c2) == 1, "material survives swap-remove (cell 2)")
+	_check(sim.blueprints.material_at(c3) == 1, "material survives swap-remove (cell 3)")
+	_check(sim.blueprints.material_at(c1) == 0, "cancelled cell reports no material")
+
+	# Completion carries material into the built structure.
+	var mat := sim.blueprints.material_at(c2)
+	var built := sim.blueprints.add_work(c2, 99.0)
+	sim.world.set_structure(c2, built, mat)
+	_check(built == SimWorld.STRUCT_WALL, "blueprint completes into a wall")
+	_check(sim.world.structure_material_at(c2) == 1, "built wall keeps its material")
 
 
 func _test_simulation() -> void:

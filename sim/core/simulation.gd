@@ -25,6 +25,7 @@ const FIELD_ASYNC_TICKS := 45  # dispatch-to-install latency
 var world: SimWorld
 var actors: ActorPool
 var defs: AiDefs
+var structure_defs: StructureDefs
 var bushes: Bushes
 var blueprints: Blueprints
 var food_field: FlowField
@@ -60,6 +61,7 @@ class _FieldJob:
 func _init(world_seed: int, map_width := 256, map_height := 256) -> void:
 	world = SimWorld.new(world_seed, map_width, map_height)
 	defs = AiDefs.load_file(AI_DEFS_PATH)
+	structure_defs = StructureDefs.load_defs()
 	bushes = Bushes.generate(world)
 	blueprints = Blueprints.new()
 	actors = ActorPool.new()
@@ -113,8 +115,8 @@ func set_command_target(x: int, y: int) -> bool:
 
 
 ## Paint a construction blueprint. Returns false if the cell can't take it.
-func place_blueprint(x: int, y: int, type: int) -> bool:
-	return blueprints.place(world, x, y, type)
+func place_blueprint(x: int, y: int, type: int, material: int = 0) -> bool:
+	return blueprints.place(world, x, y, type, material)
 
 
 func cancel_blueprint(x: int, y: int) -> bool:

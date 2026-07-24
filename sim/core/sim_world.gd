@@ -21,6 +21,7 @@ var tiles: PackedByteArray
 # Built structures, one per cell (STRUCT_*). Walls block movement; doors
 # and beds don't. A second grid layer, deliberately separate from terrain.
 var structures: PackedByteArray
+var structure_materials: PackedByteArray  # StructureDefs material index
 var structures_version := 0  # bumps on every set_structure
 
 
@@ -30,6 +31,7 @@ func _init(seed_value: int, map_width: int, map_height: int) -> void:
 	height = map_height
 	tiles = MapGen.generate(world_seed, width, height)
 	var _e: int = structures.resize(width * height)
+	var _e2: int = structure_materials.resize(width * height)
 
 
 func tile_at(x: int, y: int) -> int:
@@ -40,9 +42,14 @@ func structure_at_cell(cell: int) -> int:
 	return structures[cell]
 
 
-func set_structure(cell: int, type: int) -> void:
+func set_structure(cell: int, type: int, material: int = 0) -> void:
 	structures[cell] = type
+	structure_materials[cell] = material
 	structures_version += 1
+
+
+func structure_material_at(cell: int) -> int:
+	return structure_materials[cell]
 
 
 ## Walkability as a flat 0/1 byte grid with the border ring forced to 0 —

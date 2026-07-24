@@ -20,6 +20,7 @@ const MAX_WORKERS_PER_CELL := 1
 
 var cells := PackedInt32Array()
 var types := PackedByteArray()
+var materials := PackedByteArray()  # StructureDefs material index
 var work_done := PackedFloat32Array()
 var workers := PackedByteArray()  # workers this tick; reset by the sim
 var cell_lookup := {}
@@ -38,7 +39,7 @@ func has_at(cell: int) -> bool:
 	return cell_lookup.has(cell)
 
 
-func place(world: SimWorld, x: int, y: int, type: int) -> bool:
+func place(world: SimWorld, x: int, y: int, type: int, material: int = 0) -> bool:
 	if not world.is_walkable(x, y):
 		return false
 	var cell := y * world.width + x
@@ -47,10 +48,18 @@ func place(world: SimWorld, x: int, y: int, type: int) -> bool:
 	cell_lookup[cell] = cells.size()
 	var _e1: bool = cells.push_back(cell)
 	var _e2: bool = types.push_back(type)
+	var _e5: bool = materials.push_back(material)
 	var _e3: bool = work_done.push_back(0.0)
 	var _e4: bool = workers.push_back(0)
 	version += 1
 	return true
+
+
+## Material of the blueprint at this cell (0 if none) — read it BEFORE
+## add_work completes and removes the blueprint.
+func material_at(cell: int) -> int:
+	var idx: int = cell_lookup.get(cell, -1)
+	return int(materials[idx]) if idx >= 0 else 0
 
 
 func cancel(cell: int) -> bool:
@@ -203,10 +212,12 @@ func _remove(idx: int) -> void:
 	if idx != last:
 		cells[idx] = cells[last]
 		types[idx] = types[last]
+		materials[idx] = materials[last]
 		work_done[idx] = work_done[last]
 		workers[idx] = workers[last]
 		cell_lookup[cells[idx]] = idx
 	var _e1: int = cells.resize(last)
 	var _e2: int = types.resize(last)
+	var _e5: int = materials.resize(last)
 	var _e3: int = work_done.resize(last)
 	var _e4: int = workers.resize(last)

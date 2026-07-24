@@ -29,6 +29,7 @@ const BUILD_TOOLS: Array[int] = [
 	SimWorld.STRUCT_NONE, SimWorld.STRUCT_WALL, SimWorld.STRUCT_DOOR, SimWorld.STRUCT_BED,
 ]
 const BUILD_TOOL_NAMES: Array[String] = ["off", "wall", "door", "bed"]
+var build_material_idx := 0  # index into sim.structure_defs wall materials
 
 var terrain: TerrainRenderer
 var actor_renderer: ActorRenderer
@@ -133,7 +134,7 @@ func _start(seed_value: int) -> void:
 	bush_renderer.setup(sim.world, sim.bushes)
 	structure_renderer = StructureRenderer.new()
 	add_child(structure_renderer)
-	structure_renderer.setup()
+	structure_renderer.setup(sim.structure_defs)
 	field_overlay = FieldDebugRenderer.new()
 	add_child(field_overlay)
 	selection_ring = Sprite2D.new()
@@ -213,6 +214,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("build_tool"):
 		build_tool_idx = (build_tool_idx + 1) % BUILD_TOOLS.size()
 		_last_paint_cell = -1
+	elif event.is_action_pressed("build_material"):
+		build_material_idx = (build_material_idx + 1) % sim.structure_defs.wall_material_count()
 	elif event.is_action_pressed("debug_field"):
 		show_field = not show_field
 		_apply_field_overlay()
@@ -258,7 +261,8 @@ func _paint_blueprint(tile_pos: Vector2) -> void:
 	if cell == _last_paint_cell:
 		return
 	_last_paint_cell = cell
-	var _placed: bool = sim.place_blueprint(x, y, BUILD_TOOLS[build_tool_idx])
+	var mat := build_material_idx if BUILD_TOOLS[build_tool_idx] == SimWorld.STRUCT_WALL else 0
+	var _placed: bool = sim.place_blueprint(x, y, BUILD_TOOLS[build_tool_idx], mat)
 
 
 ## Nearest pawn within ~a tile of the click, or -1.
@@ -301,6 +305,10 @@ func _place_demo_house() -> void:
 						var _w: bool = sim.place_blueprint(x + dx, y + dy, SimWorld.STRUCT_WALL)
 			var _b1: bool = sim.place_blueprint(x + 2, y + 2, SimWorld.STRUCT_BED)
 			var _b2: bool = sim.place_blueprint(x + 5, y + 2, SimWorld.STRUCT_BED)
+			# Marble wing off the NE corner: proves cross-material wall
+			# connectivity and per-material sheets in one glance.
+			for dx: int in 3:
+				var _m: bool = sim.place_blueprint(x + 8 + dx, y, SimWorld.STRUCT_WALL, 1)
 			_place_camera(Vector2(x + 4, y + 3) * TerrainRenderer.TILE_PX)
 			return
 
@@ -353,13 +361,15 @@ func _update_hud() -> void:
 		if sim.actors.responding[i] == 1:
 			responding += 1
 	var build_text := BUILD_TOOL_NAMES[build_tool_idx]
+	if BUILD_TOOLS[build_tool_idx] == SimWorld.STRUCT_WALL:
+		build_text += " (%s)" % sim.structure_defs.wall_material_ids[build_material_idx]
 	hud.text = (
 		"seed %d | actors %d (%d rallying) | build: %s | bp %d | speed %s | zoom %s | fps %d | sim tick %.2f ms | tick %d\n" % [
 			world_seed, sim.actors.count, responding, build_text, sim.blueprints.cells.size(),
 			speed_text, str(ZOOM_STEPS[zoom_idx]),
 			Engine.get_frames_per_second(), avg_tick_ms, sim.tick_count,
 		]
-		+ "[B] build tool (paint LMB, cancel RMB)  [click] inspect pawn  [shift+click] rally  [Space] pause  [1/2/3] speed  [F] +100 actors  [G] field overlay  [N] new seed  [R] regen  [WASD] pan  [wheel] zoom"
+		+ "[B] build tool (paint LMB, cancel RMB)  [M] wall material  [click] inspect pawn  [shift+click] rally  [Space] pause  [1/2/3] speed  [F] +100 actors  [G] field overlay  [N] new seed  [R] regen  [WASD] pan  [wheel] zoom"
 	)
 
 
