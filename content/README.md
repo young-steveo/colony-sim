@@ -27,11 +27,14 @@ Current layout:
 - `actors/body/` — base body spritesheet (four-direction walk; whitespace at
   the bottom of the sheet is reserved for future animation rows). Bottom layer
   of the future paperdoll stack; hair/apparel become sibling folders.
-- `terrain/` — one sheet per material (`grass.png` + `grass.pyxel`), flat
+- `terrain/` — one sheet per material (`dirt.png` + `dirt.pyxel`), flat
   until a material needs more files. Constructed floors are terrain materials
-  too. Transitions are per-material edge overlays drawn against transparency
-  (not per-pair tiles — pairs are O(n²) and mod-hostile); the higher
-  blend-priority material draws its edges over any neighbor. Shared sheet
-  layout so the loader can assume it: row 0 base variants, row 1 edge
-  overlays (N, E, S, W), row 2 outer + inner corners, whitespace below
-  reserved per material.
+  too. Each sheet is a standard autotile set (blob or marching-squares
+  template — consistent across materials) with one rule: transition tiles are
+  drawn against **transparency**, never baked against a specific neighbor
+  (per-pair sets are O(n²) and mod-hostile). The renderer draws the substrate
+  first, then the higher blend-priority material's overlay tiles on top, so
+  one set works over any neighbor. Cell-to-role mapping goes in the
+  material's data entry when terrain goes data-driven. Grass is likely
+  *coverage* (burnable sim state), not substrate — same overlay art format
+  either way; folder placement settles with the environment-stack design.

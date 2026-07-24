@@ -626,6 +626,31 @@ may be a *progression*, not a single design — hands-on chalk at four
 colonists, declared intent at a hundred; the UX grows up alongside
 the colony like everything else.
 
+### File organization + tileset conventions (July 24, 2026)
+
+**Engine vs. content is the boundary, not file type or feature.** Code
+stays layered (`sim/`/`render/`/`game/` — the sim/render split is
+enforceable-by-path and stays that way); everything mod-overridable
+(data + art, including PyxelEdit sources) lives in `content/`,
+feature-organized, shaped like a mod package. The base game's content
+tree IS the mod format (future: `content/core/` as mod zero). Contract
+in `content/README.md`.
+
+**Tileset convention:** one sheet per terrain material, standard
+autotile template, transitions drawn against transparency — never
+baked against a specific neighbor (per-pair sets are O(n²) and
+mod-hostile). Higher blend-priority material overlays its neighbor at
+render time. One actor layer = one sheet, all animations in rows.
+
+**Open design question queued — the environment tile stack.** Stephen
+flagged that grass isn't substrate: if lightning can burn it away, it's
+sim state (coverage), like bushes already are. Wants a session on what
+stacks on a tile — substrate / flooring / coverage / wall-or-door —
+before terrain goes data-driven. Overlay art format is identical
+either way, so art production isn't blocked on the answer. This
+session comes *after* the interaction-model brainstorm, which remains
+next.
+
 ## 14. References
 
 - **Brian Walker (Brogue), RPS interview** — the dungeon as "a living and
