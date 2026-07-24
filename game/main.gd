@@ -205,8 +205,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			var picked := _pick_pawn(tile_pos)
 			if picked >= 0:
 				selected_id = sim.actors.ids[picked]
-			else:
+			elif mb.shift_pressed:
+				# Debug verb: rally everyone to the clicked tile.
 				_rally(floori(tile_pos.x), floori(tile_pos.y))
+			else:
+				selected_id = -1
 
 
 ## Nearest pawn within ~a tile of the click, or -1.
@@ -256,7 +259,7 @@ func _update_hud() -> void:
 			world_seed, sim.actors.count, responding, speed_text, str(ZOOM_STEPS[zoom_idx]),
 			Engine.get_frames_per_second(), avg_tick_ms, sim.tick_count,
 		]
-		+ "[click] rally / inspect pawn  [Space] pause  [1/2/3] speed  [F] +100 actors  [G] field overlay  [N] new seed  [R] regen  [WASD] pan  [wheel] zoom"
+		+ "[click] inspect pawn  [shift+click] rally (debug)  [Space] pause  [1/2/3] speed  [F] +100 actors  [G] field overlay  [N] new seed  [R] regen  [WASD] pan  [wheel] zoom"
 	)
 
 
