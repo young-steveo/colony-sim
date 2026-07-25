@@ -76,19 +76,29 @@ func _build_base(world: SimWorld, defs: TerrainDefs) -> void:
 	add_child(base)
 
 
-## What shows through a bare substrate's transition notches: the first
-## different neighbor SUBSTRATE in scan order. Substrates always yield to
-## substrates — at a grass-field boundary the grass has already thinned
-## to soil (see above), so stone meeting grassland correctly reveals the
-## dirt seam, and both sides of the contour tell one story: everything
-## gives way to the soil line, and the soil gives way to rock.
+## What shows through a bare substrate's transition notches. Substrates
+## always yield to substrates — at a grass-field boundary the grass has
+## already thinned to soil (see above), so stone meeting grassland
+## correctly reveals the soil line. The base image is ONE pixel per tile,
+## so a cell gets a single reveal color under all its notches even when
+## it borders different materials on different sides: take the MAJORITY
+## differing neighbor (sides outvote corners 2:1), so one mud corner
+## can't speak for three dirt sides.
 func _reveal_substrate(world: SimWorld, x: int, y: int, mat: int) -> int:
-	for offset: Vector2i in NEIGHBOR_ORDER:
+	var votes := {}
+	var best := mat
+	var best_v := 0
+	for i: int in NEIGHBOR_ORDER.size():
+		var offset := NEIGHBOR_ORDER[i]
 		var n := world.tile_at(
 			clampi(x + offset.x, 0, world.width - 1), clampi(y + offset.y, 0, world.height - 1))
-		if n != mat:
-			return n
-	return mat
+		if n == mat:
+			continue
+		votes[n] = int(votes.get(n, 0)) + (2 if i < 4 else 1)  # cardinals first in order
+		if votes[n] > best_v:
+			best_v = votes[n]
+			best = n
+	return best
 
 
 ## One blob layer: `layer` is the byte array it reads (substrates or
