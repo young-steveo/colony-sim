@@ -61,7 +61,7 @@ func _build_base(world: SimWorld, defs: TerrainDefs) -> void:
 			if surf != SimWorld.SURF_NONE and defs.surface_sheets[surf] == "":
 				c = defs.surface_colors[surf]  # sheetless surface flat-covers
 			elif defs.sheets[mat] != "":
-				c = defs.colors[_reveal_substrate(world, x, y, mat)]
+				c = _reveal_color(world, defs, x, y, mat)
 			else:
 				c = defs.colors[mat]
 			var k := SimRng.combine(SimRng.combine(shade_key, x), y)
@@ -72,15 +72,22 @@ func _build_base(world: SimWorld, defs: TerrainDefs) -> void:
 
 
 ## What shows through a sheeted substrate's transition notches: the first
-## different neighbor substrate in scan order, or the cell's own material
-## when fully interior (covered by the overlay anyway).
-func _reveal_substrate(world: SimWorld, x: int, y: int, mat: int) -> int:
+## different neighbor substrate in scan order — as the player SEES it. A
+## grass-covered dirt neighbor reveals grass olive, not the dirt hiding
+## under it; revealing the true substrate paints a phantom dirt rim
+## around every stone-meets-grass contour.
+func _reveal_color(world: SimWorld, defs: TerrainDefs, x: int, y: int, mat: int) -> Color:
 	for offset: Vector2i in NEIGHBOR_ORDER:
-		var n := world.tile_at(
-			clampi(x + offset.x, 0, world.width - 1), clampi(y + offset.y, 0, world.height - 1))
-		if n != mat:
-			return n
-	return mat
+		var cell := (
+			clampi(y + offset.y, 0, world.height - 1) * world.width
+			+ clampi(x + offset.x, 0, world.width - 1)
+		)
+		if world.tiles[cell] != mat:
+			var nsurf := world.surfaces[cell]
+			if nsurf != SimWorld.SURF_NONE:
+				return defs.surface_colors[nsurf]
+			return defs.colors[world.tiles[cell]]
+	return defs.colors[mat]
 
 
 ## One blob layer: `layer` is the byte array it reads (substrates or
