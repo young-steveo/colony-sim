@@ -37,12 +37,13 @@ Current layout:
   cells (E-W wall, N-S wall). Ghost/blueprint rendering reuses these
   sheets tinted in shader — no separate ghost art.
 - `ui/` — UI chrome and icons. 9-slice `panel.png` 24×24 with 8px corners.
-  Icons live in `icons.png`: **32×32 cells, 12 columns × 5 rows** (384×160)
-  — column = icon id, row = animation frame, row 0 = the static frame
-  (icons.pyxel is the reference arrangement; the trowel at column 0 is the
-  build tool). Icon style: `#2e222f` linework, white fill — reads over any
-  world background. UI renders icons at native size or integer multiples
-  only. UI art is content: someday mods reskin it.
+  Icons live in `icons.png`: **32×32 cells, row = icon, column = animation
+  frame** (column 0 = the static frame; the sheet grows downward as icons
+  accumulate — currently 384×160). Rows so far: 0 = trowel (build tool),
+  1 = eyedropper (pick material). Icon style: `#2e222f` linework, white
+  fill, `#c7dcd0` sheen accents — reads over any world background. UI
+  renders icons at native size or integer multiples only. UI art is
+  content: someday mods reskin it.
 - `terrain/` — one sheet per material (`dirt.png` + `dirt.pyxel`), flat
   until a material needs more files. Constructed floors are terrain materials
   too. Each sheet is the standard **47-tile blob template, 12×4 cells, plus
