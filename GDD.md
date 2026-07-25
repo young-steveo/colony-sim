@@ -431,7 +431,11 @@ Decided in the interaction-model brainstorm (July 2026); supersedes the
   Patterns are data (ordered swatch refs): saveable, shareable, moddable.
 - **Placement**: single + line for the slice; line commits on release
   (kills the half-drawn-thought bug class and the emergency-path problem —
-  placement is immediate). Flood-fill for floors soon after (bounded by
+  placement is immediate). *Settled July 2026: line is **shift-held**, not
+  a mode or an icon — the pixel-editor convention (hold shift: chalk-line
+  preview from last painted cell; click commits). Also settled: hold-Alt =
+  temporary eyedropper; v1 keybinds B/P/I/X tools, 1–8 swatches, Tab
+  shelf, Esc pointer; sim speed moved to F1–F3 to free the digits.* Flood-fill for floors soon after (bounded by
   walls/plans; enclosure flood-fill already exists). Freehand chalk
   sketching and a sketch→approve plan layer drop to the roadmap as
   Fun-Principle prototype candidates, not assumptions.

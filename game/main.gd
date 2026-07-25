@@ -27,19 +27,19 @@ var _cam_pos := Vector2.ZERO  # continuous pan position; cam snaps to pixels
 var accumulator := 0.0
 var avg_tick_ms := 0.0
 
-const BUILD_TOOLS: Array[int] = [
-	SimWorld.STRUCT_NONE, SimWorld.STRUCT_WALL, SimWorld.STRUCT_DOOR, SimWorld.STRUCT_BED,
-]
-const BUILD_TOOL_NAMES: Array[String] = ["off", "wall", "door", "bed"]
-var build_material_idx := 0  # index into sim.structure_defs wall materials
+const TOOL_NAMES: Array[String] = ["paint", "pattern", "eyedropper", "cancel", "pointer"]
 
 var terrain: TerrainRenderer
 var actor_renderer: ActorRenderer
 var bush_renderer: BushRenderer
 var structure_renderer: StructureRenderer
 var field_overlay: FieldDebugRenderer
-var build_tool_idx := 0
-var _last_paint_cell := -1
+var palette: PaletteBar
+var tool_cursor: ToolCursor
+var build_overlay: BuildOverlay
+var _line_anchor := Vector2i(-9999, -9999)  # last painted cell; shift-line start
+var _stroke_len := 0  # cells attempted this stroke; drives pattern parity
+var _last_stroke_cell := -1
 var show_field := false
 var rally_marker: Sprite2D
 var selection_ring: Sprite2D
@@ -91,6 +91,10 @@ func _ready() -> void:
 	panel.add_theme_constant_override("outline_size", 6)
 	panel.visible = false
 	ui.add_child(panel)
+	palette = PaletteBar.new()
+	ui.add_child(palette)
+	tool_cursor = ToolCursor.new()
+	ui.add_child(tool_cursor)
 
 	_start(start_seed)
 	if _rally_arg.contains(","):
@@ -126,8 +130,12 @@ func _start(seed_value: int) -> void:
 		structure_renderer.queue_free()
 	if selection_ring:
 		selection_ring.queue_free()
+	if build_overlay:
+		build_overlay.queue_free()
 	selected_id = -1
-	build_tool_idx = 0
+	_line_anchor = Vector2i(-9999, -9999)
+	_last_stroke_cell = -1
+	palette.setup(sim.structure_defs)
 	terrain = TerrainRenderer.new()
 	add_child(terrain)
 	terrain.build(sim.world, sim.terrain_defs)
@@ -160,6 +168,8 @@ func _start(seed_value: int) -> void:
 	actor_renderer = ActorRenderer.new()
 	add_child(actor_renderer)
 	actor_renderer.setup(world_seed)
+	build_overlay = BuildOverlay.new()
+	add_child(build_overlay)
 	_apply_field_overlay()
 
 	var map_px := Vector2(sim.world.width, sim.world.height) * TerrainRenderer.TILE_PX
@@ -190,6 +200,7 @@ func _process(delta: float) -> void:
 	_pan_camera(delta)
 	_update_hud()
 	_update_selection()
+	_update_paint_ui()
 
 	if _screenshot_mode:
 		_frame += 1
@@ -213,11 +224,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		_start(randi())
 	elif event.is_action_pressed("debug_regen"):
 		_start(world_seed)
-	elif event.is_action_pressed("build_tool"):
-		build_tool_idx = (build_tool_idx + 1) % BUILD_TOOLS.size()
-		_last_paint_cell = -1
-	elif event.is_action_pressed("build_material"):
-		build_material_idx = (build_material_idx + 1) % sim.structure_defs.wall_material_count()
+	elif event.is_action_pressed("tool_paint"):
+		palette.select_tool(PaletteBar.Tool.PAINT)
+	elif event.is_action_pressed("tool_pattern"):
+		palette.select_tool(PaletteBar.Tool.PATTERN)
+	elif event.is_action_pressed("tool_eyedropper"):
+		palette.select_tool(PaletteBar.Tool.EYEDROPPER)
+	elif event.is_action_pressed("tool_cancel"):
+		palette.select_tool(PaletteBar.Tool.CANCEL)
+	elif event.is_action_pressed("shelf_next"):
+		palette.cycle_shelf()
+	elif event.is_action_pressed("ui_cancel"):
+		# Esc: put the brush down; pointer mode selects pawns.
+		if palette.tool == PaletteBar.Tool.POINTER:
+			selected_id = -1
+		palette.select_tool(PaletteBar.Tool.POINTER)
 	elif event.is_action_pressed("debug_field"):
 		show_field = not show_field
 		_apply_field_overlay()
@@ -226,45 +247,133 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("zoom_out"):
 		_zoom(-1)
 	else:
+		var i := 0
+		while i < 8:
+			if event.is_action_pressed("swatch_%d" % (i + 1)):
+				palette.select_swatch(i)
+				return
+			i += 1
+		var key := event as InputEventKey
+		if key and key.physical_keycode == KEY_ALT:
+			# Hold-Alt = temporary eyedropper while any tool is in hand.
+			if key.pressed and not key.echo:
+				palette.alt_down()
+			elif not key.pressed:
+				palette.alt_up()
+			return
 		_handle_mouse(event)
 
 
 func _handle_mouse(event: InputEvent) -> void:
 	var tile_pos := get_global_mouse_position() / TerrainRenderer.TILE_PX
+	var cell := Vector2i(floori(tile_pos.x), floori(tile_pos.y))
+	var tool: int = palette.tool
 	var mb := event as InputEventMouseButton
 	if mb and mb.pressed:
-		if build_tool_idx > 0:
-			if mb.button_index == MOUSE_BUTTON_LEFT:
-				_paint_blueprint(tile_pos)
-			elif mb.button_index == MOUSE_BUTTON_RIGHT:
-				var _c: bool = sim.cancel_blueprint(floori(tile_pos.x), floori(tile_pos.y))
+		if mb.button_index == MOUSE_BUTTON_RIGHT and tool != PaletteBar.Tool.POINTER:
+			# Quick-erase stays on RMB regardless of tool: muscle memory.
+			var _c: bool = sim.cancel_blueprint(cell.x, cell.y)
 			return
 		if mb.button_index != MOUSE_BUTTON_LEFT:
 			return
-		var picked := _pick_pawn(tile_pos)
-		if picked >= 0:
-			selected_id = sim.actors.ids[picked]
-		elif mb.shift_pressed:
-			# Debug verb: rally everyone to the clicked tile.
-			_rally(floori(tile_pos.x), floori(tile_pos.y))
-		else:
-			selected_id = -1
+		match tool:
+			PaletteBar.Tool.PAINT, PaletteBar.Tool.PATTERN:
+				_stroke_len = 0
+				_last_stroke_cell = -1
+				if mb.shift_pressed and _line_anchor.x != -9999:
+					_commit_line(_line_anchor, cell, tool)
+				else:
+					_paint_cell(cell, tool)
+				_line_anchor = cell
+			PaletteBar.Tool.CANCEL:
+				_last_stroke_cell = cell.y * sim.world.width + cell.x
+				var _c2: bool = sim.cancel_blueprint(cell.x, cell.y)
+			PaletteBar.Tool.EYEDROPPER:
+				_eyedrop(cell)
+			PaletteBar.Tool.POINTER:
+				var picked := _pick_pawn(tile_pos)
+				if picked >= 0:
+					selected_id = sim.actors.ids[picked]
+				elif mb.shift_pressed:
+					# Debug verb: rally everyone to the clicked tile.
+					_rally(cell.x, cell.y)
+				else:
+					selected_id = -1
 		return
-	# Drag-paint while the left button is held with a tool active.
+	# Drag: freehand stroke (paint/pattern) or sweep-erase (cancel).
 	var motion := event as InputEventMouseMotion
-	if motion and build_tool_idx > 0 and motion.button_mask & MOUSE_BUTTON_MASK_LEFT:
-		_paint_blueprint(tile_pos)
+	if motion and motion.button_mask & MOUSE_BUTTON_MASK_LEFT:
+		match tool:
+			PaletteBar.Tool.PAINT, PaletteBar.Tool.PATTERN:
+				_paint_cell(cell, tool)
+				_line_anchor = cell
+			PaletteBar.Tool.CANCEL:
+				var flat := cell.y * sim.world.width + cell.x
+				if flat != _last_stroke_cell:
+					_last_stroke_cell = flat
+					var _c3: bool = sim.cancel_blueprint(cell.x, cell.y)
 
 
-func _paint_blueprint(tile_pos: Vector2) -> void:
-	var x := floori(tile_pos.x)
-	var y := floori(tile_pos.y)
-	var cell := y * sim.world.width + x
-	if cell == _last_paint_cell:
+func _paint_cell(cell: Vector2i, tool: int) -> void:
+	var flat := cell.y * sim.world.width + cell.x
+	if flat == _last_stroke_cell:
 		return
-	_last_paint_cell = cell
-	var mat := build_material_idx if BUILD_TOOLS[build_tool_idx] == SimWorld.STRUCT_WALL else 0
-	var _placed: bool = sim.place_blueprint(x, y, BUILD_TOOLS[build_tool_idx], mat)
+	_last_stroke_cell = flat
+	# Pattern brush v1: one pattern, 1-on / 1-off (fence posts).
+	var on := tool != PaletteBar.Tool.PATTERN or _stroke_len % 2 == 0
+	_stroke_len += 1
+	if not on:
+		return
+	var sw := palette.loaded_swatch()
+	var _placed: bool = sim.place_blueprint(cell.x, cell.y, sw["type"], sw["mat"])
+
+
+## Shift-click: fill the chalk line into ghosts in one stroke.
+func _commit_line(a: Vector2i, b: Vector2i, tool: int) -> void:
+	var cells := BuildOverlay.cells_between(a, b)
+	var sw := palette.loaded_swatch()
+	for i: int in cells.size():
+		if tool == PaletteBar.Tool.PATTERN and i % 2 == 1:
+			continue
+		var _placed: bool = sim.place_blueprint(cells[i].x, cells[i].y, sw["type"], sw["mat"])
+
+
+## Eyedropper: built structures first, then ghosts — pick up whatever the
+## world has at this cell and load its swatch.
+func _eyedrop(cell: Vector2i) -> void:
+	var w := sim.world
+	if cell.x < 0 or cell.y < 0 or cell.x >= w.width or cell.y >= w.height:
+		return
+	var flat := cell.y * w.width + cell.x
+	if w.structures[flat] != SimWorld.STRUCT_NONE:
+		var _f: bool = palette.pick(int(w.structures[flat]), int(w.structure_materials[flat]))
+		return
+	var bidx: int = sim.blueprints.cell_lookup.get(flat, -1)
+	if bidx >= 0:
+		var _f2: bool = palette.pick(
+			int(sim.blueprints.types[bidx]), int(sim.blueprints.materials[bidx]))
+
+
+## Per-frame paint feedback: bar placement, cursor glyph, hover outline,
+## shift-line preview. The OS pointer returns over UI and in pointer mode.
+func _update_paint_ui() -> void:
+	var vp := get_viewport().get_visible_rect().size
+	palette.position = Vector2(
+		floorf((vp.x - palette.size.x) * 0.25) * 2.0, floorf(vp.y - palette.size.y - 20.0))
+	var tool: int = palette.tool
+	var over_ui := palette.get_global_rect().has_point(get_viewport().get_mouse_position())
+	var painting := tool != PaletteBar.Tool.POINTER and not over_ui and not _screenshot_mode
+	tool_cursor.visible = painting
+	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN if painting else Input.MOUSE_MODE_VISIBLE
+	tool_cursor.update_tool(tool, palette.loaded_swatch()["chip"])
+	var tile := get_global_mouse_position() / TerrainRenderer.TILE_PX
+	var cell := Vector2i(floori(tile.x), floori(tile.y))
+	var line: Array[Vector2i] = []
+	if painting and (tool == PaletteBar.Tool.PAINT or tool == PaletteBar.Tool.PATTERN) \
+			and Input.is_key_pressed(KEY_SHIFT) and _line_anchor.x != -9999:
+		line = BuildOverlay.cells_between(_line_anchor, cell)
+	var hover := cell if painting else Vector2i(-9999, -9999)
+	build_overlay.update_state(hover, line, tool == PaletteBar.Tool.CANCEL, cam.zoom.x)
 
 
 ## Nearest pawn within ~a tile of the click, or -1.
@@ -362,16 +471,15 @@ func _update_hud() -> void:
 	for i: int in sim.actors.count:
 		if sim.actors.responding[i] == 1:
 			responding += 1
-	var build_text := BUILD_TOOL_NAMES[build_tool_idx]
-	if BUILD_TOOLS[build_tool_idx] == SimWorld.STRUCT_WALL:
-		build_text += " (%s)" % sim.structure_defs.wall_material_ids[build_material_idx]
+	var sw := palette.loaded_swatch()
+	var build_text: String = TOOL_NAMES[palette.tool] + " / " + str(sw["label"]).to_lower()
 	hud.text = (
-		"seed %d | actors %d (%d rallying) | build: %s | bp %d | speed %s | zoom %s | fps %d | sim tick %.2f ms | tick %d\n" % [
+		"seed %d | actors %d (%d rallying) | brush: %s | bp %d | speed %s | zoom %s | fps %d | sim tick %.2f ms | tick %d\n" % [
 			world_seed, sim.actors.count, responding, build_text, sim.blueprints.cells.size(),
 			speed_text, str(ZOOM_STEPS[zoom_idx]),
 			Engine.get_frames_per_second(), avg_tick_ms, sim.tick_count,
 		]
-		+ "[B] build tool (paint LMB, cancel RMB)  [M] wall material  [click] inspect pawn  [shift+click] rally  [Space] pause  [1/2/3] speed  [F] +100 actors  [G] field overlay  [N] new seed  [R] regen  [WASD] pan  [wheel] zoom"
+		+ "[B/P/I/X] tools  [1-8] swatches  [Tab] shelf  [shift+click] line  [hold Alt] pick  [RMB] erase  [Esc] pointer (inspect / shift+click rally)  [Space] pause  [F1-F3] speed  [F] +100  [G] field  [N] seed  [R] regen  [WASD] pan  [wheel] zoom"
 	)
 
 
