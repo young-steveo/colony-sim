@@ -1,9 +1,18 @@
 class_name MapGen
 extends RefCounted
 ## Deterministic terrain generation: fractal value noise built entirely on
-## SimRng, so the same seed always produces the same map. Placeholder
-## walking-skeleton generator — real worldgen (regions, rivers, ruins, WFC
-## detail passes) replaces this later.
+## SimRng, so the same seed always produces the same map. Walking-skeleton
+## generator — regions, rivers, ruins, WFC detail passes replace this later.
+##
+## Worldgen fields (GDD: Soft ground & mud — fields plan): few PHYSICAL
+## primaries, derive everything else. Primaries: ELEVATION (coastline,
+## stone line), RAINFALL (climate-scale wet/dry regions), SOIL DEPTH (how
+## far down bedrock is, thinning with altitude). Derived: WETNESS =
+## f(rainfall, distance-to-water) — ground truth, not climate. Materials
+## are then classification, never decree: fertile = deep + wet, rocky =
+## thin soil, mud = soaked short of open water, sand = dry shoreline,
+## stone = no soil at all. Believability comes from the correlations the
+## continuous fields carry for free.
 ##
 ## Each octave's lattice values are precomputed once (thousands of hashes)
 ## instead of hashed per tile corner (millions) — ~20x faster, still a pure
@@ -11,35 +20,103 @@ extends RefCounted
 
 const OCTAVES := 4
 const BASE_FREQUENCY := 1.0 / 48.0
+const RAIN_FREQUENCY := 1.0 / 96.0  # climate varies slower than terrain
+const SOIL_FREQUENCY := 1.0 / 32.0
 
-# Elevation bands (tile stack: substrate + surface). Below the grass line,
-# lowland dirt stays bare (shores); above it, grass grows ON the dirt as a
-# surface. High ground is walkable stone — impassable mountain mass comes
-# later as natural granite walls on top of it (GDD: Soft ground & mud /
-# tile stack).
 const THRESHOLD_WATER := 0.34
-const THRESHOLD_GRASS := 0.46
-const THRESHOLD_STONE := 0.72
+const THRESHOLD_PEAK := 0.72  # above this, bedrock breaks the surface
+const SOIL_BARE := 0.16  # thinner than this = exposed stone
+const SOIL_ROCKY := 0.34
+const SOIL_FERTILE := 0.58
+const WET_MUD := 0.70
+const WET_FERTILE := 0.50
+const WET_GRASS := 0.32
+const WET_SAND_MAX := 0.52  # sand only on DRY shores
+const SAND_SHORE_DIST := 2
+const WATER_REACH := 12.0  # tiles over which proximity wetness fades
 
 
 ## Returns { "substrate": PackedByteArray, "surface": PackedByteArray }.
 static func generate(world_seed: int, width: int, height: int) -> Dictionary:
 	var cell_count := width * height
-	var terrain_key := SimRng.key([world_seed, "terrain"])
+	var elevation := _fractal(SimRng.key([world_seed, "terrain"]), width, height, OCTAVES, BASE_FREQUENCY)
+	var rainfall := _fractal(SimRng.key([world_seed, "rainfall"]), width, height, 2, RAIN_FREQUENCY)
+	var soil_noise := _fractal(SimRng.key([world_seed, "soil"]), width, height, 3, SOIL_FREQUENCY)
 
-	var elevation := PackedFloat32Array()
-	var _err: int = elevation.resize(cell_count)
-	elevation.fill(0.0)
+	# Distance to open water (4-way BFS) — wetness is ground truth, and
+	# ground near water is wet regardless of climate.
+	var dist := PackedInt32Array()
+	var _e1: int = dist.resize(cell_count)
+	dist.fill(0x3FFFFFFF)
+	var queue := PackedInt32Array()
+	for c: int in cell_count:
+		if elevation[c] < THRESHOLD_WATER:
+			dist[c] = 0
+			var _e2: bool = queue.push_back(c)
+	var head := 0
+	while head < queue.size():
+		var c := queue[head]
+		head += 1
+		var cx := c % width
+		var d := dist[c] + 1
+		for n: int in [c - width, c + width, c - 1, c + 1]:
+			if n < 0 or n >= cell_count:
+				continue
+			if (n == c - 1 and cx == 0) or (n == c + 1 and cx == width - 1):
+				continue
+			if d < dist[n]:
+				dist[n] = d
+				var _e3: bool = queue.push_back(n)
+
+	var substrate := PackedByteArray()
+	var surface := PackedByteArray()
+	var _e4: int = substrate.resize(cell_count)
+	var _e5: int = surface.resize(cell_count)
+	for c: int in cell_count:
+		var e := elevation[c]
+		if e < THRESHOLD_WATER:
+			substrate[c] = SimWorld.TILE_WATER
+			continue
+		var soil := soil_noise[c] * (1.0 - 0.6 * e)  # thin up high
+		var proximity := clampf(1.0 - float(dist[c]) / WATER_REACH, 0.0, 1.0)
+		var wetness := 0.6 * rainfall[c] + 0.4 * proximity
+		if e >= THRESHOLD_PEAK or soil < SOIL_BARE:
+			substrate[c] = SimWorld.TILE_STONE
+		elif dist[c] <= SAND_SHORE_DIST and wetness < WET_SAND_MAX:
+			substrate[c] = SimWorld.TILE_SAND
+		elif wetness >= WET_MUD:
+			substrate[c] = SimWorld.TILE_MUD
+		elif soil >= SOIL_FERTILE and wetness >= WET_FERTILE:
+			substrate[c] = SimWorld.TILE_DIRT_FERTILE
+		elif soil < SOIL_ROCKY:
+			substrate[c] = SimWorld.TILE_DIRT_ROCKY
+		else:
+			substrate[c] = SimWorld.TILE_DIRT
+		# Grass grows on soil that holds some water — including fertile
+		# ground (its fringe then exposes fertile dirt: the seam rule).
+		var s := substrate[c]
+		if (s == SimWorld.TILE_DIRT or s == SimWorld.TILE_DIRT_FERTILE) and wetness >= WET_GRASS:
+			surface[c] = SimWorld.SURF_GRASS
+	return {"substrate": substrate, "surface": surface}
+
+
+## Normalized [0,1] fractal value noise, lattice precomputed per octave.
+static func _fractal(
+	field_key: int, width: int, height: int, octaves: int, base_frequency: float
+) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	var _err: int = out.resize(width * height)
+	out.fill(0.0)
 	var norm := 0.0
 	var amplitude := 1.0
-	var frequency := BASE_FREQUENCY
+	var frequency := base_frequency
 
-	for octave: int in OCTAVES:
+	for octave: int in octaves:
 		var lattice_w := floori((width - 1) * frequency) + 2
 		var lattice_h := floori((height - 1) * frequency) + 2
 		var lattice := PackedFloat32Array()
 		var _err2: int = lattice.resize(lattice_w * lattice_h)
-		var octave_key := SimRng.combine(terrain_key, octave)
+		var octave_key := SimRng.combine(field_key, octave)
 		for cy: int in lattice_h:
 			var row_key := SimRng.combine(octave_key, cy)
 			var row := cy * lattice_w
@@ -61,25 +138,13 @@ static func generate(world_seed: int, width: int, height: int) -> Dictionary:
 				tx = tx * tx * (3.0 - 2.0 * tx)
 				var top := lerpf(lattice[row0 + x0], lattice[row0 + x0 + 1], tx)
 				var bottom := lerpf(lattice[row1 + x0], lattice[row1 + x0 + 1], tx)
-				elevation[out_row + x] += amplitude * lerpf(top, bottom, ty)
+				out[out_row + x] += amplitude * lerpf(top, bottom, ty)
 
 		norm += amplitude
 		amplitude *= 0.5
 		frequency *= 2.0
 
-	var substrate := PackedByteArray()
-	var surface := PackedByteArray()
-	var _err3: int = substrate.resize(cell_count)
-	var _err4: int = surface.resize(cell_count)
-	var inv_norm := 1.0 / norm
-	for c: int in cell_count:
-		var e := elevation[c] * inv_norm
-		if e < THRESHOLD_WATER:
-			substrate[c] = SimWorld.TILE_WATER
-		elif e < THRESHOLD_STONE:
-			substrate[c] = SimWorld.TILE_DIRT
-			if e >= THRESHOLD_GRASS:
-				surface[c] = SimWorld.SURF_GRASS
-		else:
-			substrate[c] = SimWorld.TILE_STONE
-	return {"substrate": substrate, "surface": surface}
+	var inv := 1.0 / norm
+	for i: int in out.size():
+		out[i] *= inv
+	return out

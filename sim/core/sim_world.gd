@@ -11,6 +11,10 @@ extends RefCounted
 const TILE_WATER := 0
 const TILE_DIRT := 1
 const TILE_STONE := 2
+const TILE_SAND := 3
+const TILE_MUD := 4
+const TILE_DIRT_FERTILE := 5
+const TILE_DIRT_ROCKY := 6
 const SURF_NONE := 0
 const SURF_GRASS := 1
 

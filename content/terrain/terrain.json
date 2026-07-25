@@ -2,7 +2,11 @@
 	"materials": [
 		{ "id": "water", "color": "#0b5e65", "walkable": false },
 		{ "id": "dirt", "color": "#966c6c", "walkable": true, "sheet": "res://content/terrain/dirt.png" },
-		{ "id": "stone", "color": "#7f708a", "walkable": true, "sheet": "res://content/terrain/stone.png" }
+		{ "id": "stone", "color": "#7f708a", "walkable": true, "sheet": "res://content/terrain/stone.png" },
+		{ "id": "sand", "color": "#ab947a", "walkable": true, "sheet": "res://content/terrain/sand.png" },
+		{ "id": "mud", "color": "#4c3e24", "walkable": true, "sheet": "res://content/terrain/mud.png" },
+		{ "id": "dirt_fertile", "color": "#9e4539", "walkable": true, "sheet": "res://content/terrain/dirt_fertile.png" },
+		{ "id": "dirt_rocky", "color": "#966c6c", "walkable": true, "sheet": "res://content/terrain/dirt_rocky.png" }
 	],
 	"surfaces": [
 		{ "id": "grass", "color": "#676633", "sheet": "res://content/terrain/grass.png" }

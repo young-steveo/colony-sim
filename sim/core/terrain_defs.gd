@@ -33,8 +33,8 @@ static func load_defs(path: String = PATH) -> TerrainDefs:
 		var _e3: bool = defs.walkable.push_back(1 if bool(m.get("walkable", false)) else 0)
 		var _e4: bool = defs.sheets.push_back(str(m.get("sheet", "")))
 	assert(
-		defs.ids.size() > SimWorld.TILE_STONE,
-		"terrain.json must define all engine substrates (water, dirt, stone)"
+		defs.ids.size() > SimWorld.TILE_DIRT_ROCKY,
+		"terrain.json must define all engine substrates (water through dirt_rocky)"
 	)
 	var _s1: bool = defs.surface_ids.push_back("bare")
 	var _s2: bool = defs.surface_colors.push_back(Color.MAGENTA)  # never drawn

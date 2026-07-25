@@ -94,15 +94,19 @@ func _test_map_gen() -> void:
 	var grassy := 0
 	for i: int in substrate.size():
 		var t := substrate[i]
-		if t > SimWorld.TILE_STONE:
+		if t > SimWorld.TILE_DIRT_ROCKY:
 			valid = false
-		if surface[i] == SimWorld.SURF_GRASS and t != SimWorld.TILE_DIRT:
-			valid = false  # grass only grows on dirt
-		if t == SimWorld.TILE_DIRT or t == SimWorld.TILE_STONE:
-			walkable += 1
+		if (
+			surface[i] == SimWorld.SURF_GRASS
+			and t != SimWorld.TILE_DIRT
+			and t != SimWorld.TILE_DIRT_FERTILE
+		):
+			valid = false  # grass only grows on soil
+		if t != SimWorld.TILE_WATER:
+			walkable += 1  # every land substrate is walkable in v1
 		if surface[i] == SimWorld.SURF_GRASS:
 			grassy += 1
-	_check(valid, "all substrates valid; grass only on dirt")
+	_check(valid, "all substrates valid; grass only on soil")
 	_check(walkable > 64 * 64 / 4, "map is at least 25%% walkable (got %d/4096)" % walkable)
 	_check(grassy > 0, "grass surface exists")
 
