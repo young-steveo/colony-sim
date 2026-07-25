@@ -16,6 +16,11 @@ var colors := PackedColorArray()
 var walkable := PackedByteArray()
 var sheets := PackedStringArray()  # "" = no art yet
 var blend := PackedInt32Array()  # higher blend scallops OVER lower at seams
+# Color shown when this material appears through ANOTHER material's
+# transition notches (defaults to the material color). Water overrides
+# with a shallows tone: ground at a margin sits in shallow water, and
+# deep teal under a mud spit reads as "floating".
+var reveal_colors := PackedColorArray()
 var surface_ids := PackedStringArray()  # index 0 = SURF_NONE ("bare")
 var surface_colors := PackedColorArray()
 var surface_sheets := PackedStringArray()
@@ -34,6 +39,7 @@ static func load_defs(path: String = PATH) -> TerrainDefs:
 		var _e3: bool = defs.walkable.push_back(1 if bool(m.get("walkable", false)) else 0)
 		var _e4: bool = defs.sheets.push_back(str(m.get("sheet", "")))
 		var _e4b: bool = defs.blend.push_back(int(m.get("blend", defs.ids.size() - 1)))
+		var _e4c: bool = defs.reveal_colors.push_back(Color(str(m.get("reveal", m["color"]))))
 	assert(
 		defs.ids.size() > SimWorld.TILE_DIRT_ROCKY,
 		"terrain.json must define all engine substrates (water through dirt_rocky)"

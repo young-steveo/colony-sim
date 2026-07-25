@@ -1,6 +1,6 @@
 {
 	"materials": [
-		{ "id": "water", "blend": 0, "color": "#0b5e65", "walkable": false },
+		{ "id": "water", "blend": 0, "color": "#0b5e65", "reveal": "#0b8a8f", "walkable": false },
 		{ "id": "dirt", "blend": 3, "color": "#966c6c", "walkable": true, "sheet": "res://content/terrain/dirt.png" },
 		{ "id": "stone", "blend": 1, "color": "#7f708a", "walkable": true, "sheet": "res://content/terrain/stone.png" },
 		{ "id": "sand", "blend": 5, "color": "#ab947a", "walkable": true, "sheet": "res://content/terrain/sand.png" },

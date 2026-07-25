@@ -25,17 +25,13 @@ extends Node2D
 const TILE_PX := 16
 const BLOB_SHADER := preload("res://render/autotile_blob.gdshader")
 
-# The base renders at QUADRANT resolution (2x2 sub-pixels per tile): one
-# reveal color per cell cannot be right when a cell's sides face different
-# materials (a shoreline mud cell showed water teal in its GRASS-facing
-# notches). Each quadrant consults only its own corner's neighbors —
-# two cardinals, then the diagonal.
-const QUAD_SIDES: Array = [
-	[Vector2i(-1, 0), Vector2i(0, -1), Vector2i(-1, -1)],  # top-left
-	[Vector2i(1, 0), Vector2i(0, -1), Vector2i(1, -1)],  # top-right
-	[Vector2i(-1, 0), Vector2i(0, 1), Vector2i(-1, 1)],  # bottom-left
-	[Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)],  # bottom-right
-]
+# The base renders at SUBxSUB sub-pixels per tile so each SIDE of a cell
+# reveals its own neighbor (Stephen's 8-position read): edge strips
+# consult only their cardinal, corner sub-pixels their two cardinals then
+# the diagonal, the center is the cell's own color. One color per cell —
+# or even per corner-quadrant — paints the wrong neighbor under notches
+# whenever adjacent sides face different materials.
+const SUB := 4  # 16px tile / 4 = integer 4px world sub-pixels
 
 
 func build(world: SimWorld, defs: TerrainDefs) -> void:
@@ -65,10 +61,10 @@ func build(world: SimWorld, defs: TerrainDefs) -> void:
 func _build_base(world: SimWorld, defs: TerrainDefs) -> void:
 	var base := Sprite2D.new()
 	base.centered = false
-	base.scale = Vector2(TILE_PX / 2.0, TILE_PX / 2.0)
+	base.scale = Vector2(TILE_PX / float(SUB), TILE_PX / float(SUB))
 	base.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var shade_key := SimRng.key([world.world_seed, "tile_shade"])
-	var img := Image.create(world.width * 2, world.height * 2, false, Image.FORMAT_RGB8)
+	var img := Image.create(world.width * SUB, world.height * SUB, false, Image.FORMAT_RGB8)
 	for y: int in world.height:
 		for x: int in world.width:
 			var cell := y * world.width + x
@@ -76,38 +72,53 @@ func _build_base(world: SimWorld, defs: TerrainDefs) -> void:
 			var surf := world.surfaces[cell]
 			var k := SimRng.combine(SimRng.combine(shade_key, x), y)
 			var shade := 0.92 + 0.16 * SimRng.randf(k)  # one shade per TILE
-			for q: int in 4:
-				var c: Color
-				if surf != SimWorld.SURF_NONE and defs.surface_sheets[surf] == "":
-					c = defs.surface_colors[surf]  # sheetless surface flat-covers
-				elif surf != SimWorld.SURF_NONE:
-					# Sheeted surface: its fringe exposes the ground it grows
-					# ON, not the neighbor — grass thins to soil before soil
-					# meets anything else (Stephen's rule, July 2026).
-					c = defs.colors[mat]
-				elif defs.sheets[mat] != "":
-					c = defs.colors[_quadrant_reveal(world, defs, x, y, mat, q)]
-				else:
-					c = defs.colors[mat]
-				img.set_pixel(
-					x * 2 + (q & 1), y * 2 + (q >> 1),
-					Color(c.r * shade, c.g * shade, c.b * shade))
+			var flat: Color
+			var per_side := false
+			if surf != SimWorld.SURF_NONE and defs.surface_sheets[surf] == "":
+				flat = defs.surface_colors[surf]  # sheetless surface flat-covers
+			elif surf != SimWorld.SURF_NONE:
+				# Sheeted surface: its fringe exposes the ground it grows
+				# ON, not the neighbor — grass thins to soil before soil
+				# meets anything else (Stephen's rule, July 2026).
+				flat = defs.colors[mat]
+			elif defs.sheets[mat] != "":
+				per_side = true
+			else:
+				flat = defs.colors[mat]
+			for sy: int in SUB:
+				for sx: int in SUB:
+					var c := flat
+					if per_side:
+						c = _side_reveal(world, defs, x, y, mat, sx, sy)
+					img.set_pixel(
+						x * SUB + sx, y * SUB + sy,
+						Color(c.r * shade, c.g * shade, c.b * shade))
 	base.texture = ImageTexture.create_from_image(img)
 	add_child(base)
 
 
-## What shows through a bare substrate's transition notches in ONE
-## quadrant of the cell: the first differing lower-blend neighbor among
-## that corner's two cardinals and diagonal (we only scallop toward
-## lower ground — higher-blend neighbors are connected). Falls back to
-## the cell's own color, which the overlay art covers anyway.
-func _quadrant_reveal(world: SimWorld, defs: TerrainDefs, x: int, y: int, mat: int, q: int) -> int:
-	for offset: Vector2i in QUAD_SIDES[q]:
+## Reveal color for one sub-pixel of a bare sheeted substrate: edge
+## strips ask only their own cardinal neighbor, corner sub-pixels their
+## two cardinals then the diagonal, the center is the cell itself. Only
+## differing LOWER-blend neighbors count (higher-blend ones are
+## connected — no notches on that side). Uses the neighbor's reveal
+## color, so water shows as shallows under land fringes.
+func _side_reveal(
+	world: SimWorld, defs: TerrainDefs, x: int, y: int, mat: int, sx: int, sy: int
+) -> Color:
+	var dx := -1 if sx == 0 else (1 if sx == SUB - 1 else 0)
+	var dy := -1 if sy == 0 else (1 if sy == SUB - 1 else 0)
+	var candidates: Array[Vector2i] = []
+	if dx != 0 and dy != 0:
+		candidates = [Vector2i(dx, 0), Vector2i(0, dy), Vector2i(dx, dy)]
+	elif dx != 0 or dy != 0:
+		candidates = [Vector2i(dx, dy)]
+	for offset: Vector2i in candidates:
 		var n := world.tile_at(
 			clampi(x + offset.x, 0, world.width - 1), clampi(y + offset.y, 0, world.height - 1))
 		if n != mat and defs.blend[n] < defs.blend[mat]:
-			return n
-	return mat
+			return defs.reveal_colors[n]
+	return defs.colors[mat]
 
 
 ## One blob layer: `layer` is the byte array it reads (substrates or
