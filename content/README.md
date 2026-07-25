@@ -40,7 +40,7 @@ Current layout:
   Icons live in `icons.png`: **32×32 cells, row = icon, column = animation
   frame** (column 0 = the static frame; the sheet grows downward as icons
   accumulate — currently 384×160). Rows so far: 0 = trowel (build tool),
-  1 = eyedropper (pick material). Icon style: `#2e222f` linework, white
+  1 = eyedropper (pick material), 2 = pattern brush, 3 = cancel/erase. Icon style: `#2e222f` linework, white
   fill, `#c7dcd0` sheen accents — reads over any world background. UI
   renders icons at native size or integer multiples only. UI art is
   content: someday mods reskin it.
