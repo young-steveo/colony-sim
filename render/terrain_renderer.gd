@@ -38,11 +38,23 @@ func build(world: SimWorld, defs: TerrainDefs) -> void:
 		child.queue_free()
 	_build_base(world, defs)
 	for mat: int in defs.count():
-		if defs.sheets[mat] != "":
-			_build_overlay(world, defs.sheets[mat], world.tiles, mat, defs.ids[mat])
+		if defs.sheets[mat] == "":
+			continue
+		# Blend priority (content contract): at a seam only the HIGHER
+		# blend material scallops; the lower extends flat to the edge.
+		# Connected = same material, or any higher-blend neighbor.
+		var lut := PackedByteArray()
+		var _e: int = lut.resize(defs.count())
+		for n: int in defs.count():
+			lut[n] = 1 if (n == mat or defs.blend[n] > defs.blend[mat]) else 0
+		_build_overlay(world, defs.sheets[mat], world.tiles, mat, defs.ids[mat], lut)
 	for s: int in range(1, defs.surface_ids.size()):
-		if defs.surface_sheets[s] != "":
-			_build_overlay(world, defs.surface_sheets[s], world.surfaces, s, defs.surface_ids[s])
+		if defs.surface_sheets[s] == "":
+			continue
+		var slut := PackedByteArray()
+		var _e2: int = slut.resize(defs.surface_ids.size())
+		slut[s] = 1
+		_build_overlay(world, defs.surface_sheets[s], world.surfaces, s, defs.surface_ids[s], slut)
 
 
 func _build_base(world: SimWorld, defs: TerrainDefs) -> void:
@@ -66,7 +78,7 @@ func _build_base(world: SimWorld, defs: TerrainDefs) -> void:
 				# anything else (Stephen's rule, July 2026).
 				c = defs.colors[mat]
 			elif defs.sheets[mat] != "":
-				c = defs.colors[_reveal_substrate(world, x, y, mat)]
+				c = defs.colors[_reveal_substrate(world, defs, x, y, mat)]
 			else:
 				c = defs.colors[mat]
 			var k := SimRng.combine(SimRng.combine(shade_key, x), y)
@@ -84,7 +96,7 @@ func _build_base(world: SimWorld, defs: TerrainDefs) -> void:
 ## it borders different materials on different sides: take the MAJORITY
 ## differing neighbor (sides outvote corners 2:1), so one mud corner
 ## can't speak for three dirt sides.
-func _reveal_substrate(world: SimWorld, x: int, y: int, mat: int) -> int:
+func _reveal_substrate(world: SimWorld, defs: TerrainDefs, x: int, y: int, mat: int) -> int:
 	var votes := {}
 	var best := mat
 	var best_v := 0
@@ -92,8 +104,8 @@ func _reveal_substrate(world: SimWorld, x: int, y: int, mat: int) -> int:
 		var offset := NEIGHBOR_ORDER[i]
 		var n := world.tile_at(
 			clampi(x + offset.x, 0, world.width - 1), clampi(y + offset.y, 0, world.height - 1))
-		if n == mat:
-			continue
+		if n == mat or defs.blend[n] > defs.blend[mat]:
+			continue  # we only scallop toward LOWER-blend ground
 		votes[n] = int(votes.get(n, 0)) + (2 if i < 4 else 1)  # cardinals first in order
 		if votes[n] > best_v:
 			best_v = votes[n]
@@ -102,9 +114,16 @@ func _reveal_substrate(world: SimWorld, x: int, y: int, mat: int) -> int:
 
 
 ## One blob layer: `layer` is the byte array it reads (substrates or
-## surfaces) and `value` the id it matches — same autotiler either way.
+## surfaces), `value` the id it matches, `connected` a LUT over layer
+## values — 1 means "treat as myself" (self, and higher-blend neighbors
+## for substrates) — same autotiler either way.
 func _build_overlay(
-	world: SimWorld, sheet: String, layer: PackedByteArray, value: int, id_str: String
+	world: SimWorld,
+	sheet: String,
+	layer: PackedByteArray,
+	value: int,
+	id_str: String,
+	connected: PackedByteArray,
 ) -> void:
 	var tex: Texture2D = load(sheet)
 	var variants := _interior_variants(tex)
@@ -145,10 +164,10 @@ func _build_overlay(
 		@warning_ignore("integer_division")
 		var y := cell / w
 		var mask := Autotile.mask_from(
-			_same(layer, world, x, y - 1, value), _same(layer, world, x + 1, y, value),
-			_same(layer, world, x, y + 1, value), _same(layer, world, x - 1, y, value),
-			_same(layer, world, x + 1, y - 1, value), _same(layer, world, x + 1, y + 1, value),
-			_same(layer, world, x - 1, y + 1, value), _same(layer, world, x - 1, y - 1, value))
+			_same(layer, world, x, y - 1, connected), _same(layer, world, x + 1, y, connected),
+			_same(layer, world, x, y + 1, connected), _same(layer, world, x - 1, y, connected),
+			_same(layer, world, x + 1, y - 1, connected), _same(layer, world, x + 1, y + 1, connected),
+			_same(layer, world, x - 1, y + 1, connected), _same(layer, world, x - 1, y - 1, connected))
 		var sheet_cell := Autotile.cell_for(mask)
 		if sheet_cell == interior_cell and variants.size() > 1:
 			var roll := SimRng.randf(SimRng.combine(variant_key, cell))
@@ -161,13 +180,15 @@ func _build_overlay(
 		mm.set_instance_color(i, Color(shade, shade, shade))
 
 
-## Same-value check on a terrain layer with clamp-to-edge semantics: the
-## map border acts as a continuation, so edge-of-map terrain never draws
-## a transition against the void.
-static func _same(layer: PackedByteArray, world: SimWorld, x: int, y: int, value: int) -> bool:
+## Connectivity check on a terrain layer with clamp-to-edge semantics:
+## the map border acts as a continuation, so edge-of-map terrain never
+## draws a transition against the void.
+static func _same(
+	layer: PackedByteArray, world: SimWorld, x: int, y: int, connected: PackedByteArray
+) -> bool:
 	var cx := clampi(x, 0, world.width - 1)
 	var cy := clampi(y, 0, world.height - 1)
-	return layer[cy * world.width + cx] == value
+	return connected[layer[cy * world.width + cx]] == 1
 
 
 ## Interior pool: the canonical fully-surrounded cell plus every non-empty

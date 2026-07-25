@@ -15,6 +15,7 @@ var ids := PackedStringArray()
 var colors := PackedColorArray()
 var walkable := PackedByteArray()
 var sheets := PackedStringArray()  # "" = no art yet
+var blend := PackedInt32Array()  # higher blend scallops OVER lower at seams
 var surface_ids := PackedStringArray()  # index 0 = SURF_NONE ("bare")
 var surface_colors := PackedColorArray()
 var surface_sheets := PackedStringArray()
@@ -32,6 +33,7 @@ static func load_defs(path: String = PATH) -> TerrainDefs:
 		var _e2: bool = defs.colors.push_back(Color(str(m["color"])))
 		var _e3: bool = defs.walkable.push_back(1 if bool(m.get("walkable", false)) else 0)
 		var _e4: bool = defs.sheets.push_back(str(m.get("sheet", "")))
+		var _e4b: bool = defs.blend.push_back(int(m.get("blend", defs.ids.size() - 1)))
 	assert(
 		defs.ids.size() > SimWorld.TILE_DIRT_ROCKY,
 		"terrain.json must define all engine substrates (water through dirt_rocky)"
