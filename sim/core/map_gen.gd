@@ -43,6 +43,29 @@ static func generate(world_seed: int, width: int, height: int) -> Dictionary:
 	var rainfall := _fractal(SimRng.key([world_seed, "rainfall"]), width, height, 2, RAIN_FREQUENCY)
 	var soil_noise := _fractal(SimRng.key([world_seed, "soil"]), width, height, 3, SOIL_FREQUENCY)
 
+	# Coastal erosion before anything reads the coastline: a land cell
+	# with 3+ orthogonal water neighbors drowns (1-cell nubs and islets
+	# render as art floating on open water — walkable cells that LOOK
+	# like lake, a legibility violation), and a water cell with 3+ land
+	# neighbors silts up. Peninsulas with two water sides survive.
+	var water := PackedByteArray()
+	var _e0: int = water.resize(cell_count)
+	for c: int in cell_count:
+		water[c] = 1 if elevation[c] < THRESHOLD_WATER else 0
+	for pass_i: int in 2:
+		var before := water.duplicate()
+		for y: int in range(1, height - 1):
+			for x: int in range(1, width - 1):
+				var c := y * width + x
+				var wet_n := (
+					int(before[c - width]) + int(before[c + width])
+					+ int(before[c - 1]) + int(before[c + 1])
+				)
+				if before[c] == 0 and wet_n >= 3:
+					water[c] = 1
+				elif before[c] == 1 and wet_n <= 1:
+					water[c] = 0
+
 	# Distance to open water (4-way BFS) — wetness is ground truth, and
 	# ground near water is wet regardless of climate.
 	var dist := PackedInt32Array()
@@ -50,7 +73,7 @@ static func generate(world_seed: int, width: int, height: int) -> Dictionary:
 	dist.fill(0x3FFFFFFF)
 	var queue := PackedInt32Array()
 	for c: int in cell_count:
-		if elevation[c] < THRESHOLD_WATER:
+		if water[c] == 1:
 			dist[c] = 0
 			var _e2: bool = queue.push_back(c)
 	var head := 0
@@ -84,7 +107,7 @@ static func generate(world_seed: int, width: int, height: int) -> Dictionary:
 		var jitter := (SimRng.randf(SimRng.combine(jitter_key, c)) - 0.5) * 0.12
 		var proximity := clampf(1.0 - float(dist[c]) / WATER_REACH, 0.0, 1.0)
 		wetness[c] = 0.6 * rainfall[c] + 0.4 * proximity + jitter
-		if e < THRESHOLD_WATER:
+		if water[c] == 1:
 			substrate[c] = SimWorld.TILE_WATER
 			continue
 		var soil := soil_noise[c] * (1.0 - 0.6 * e)  # thin up high
