@@ -971,8 +971,20 @@ lesson confirmed twice: the artist's eyeball at play zoom is the best
 renderer test we own; every fix this session started as a Stephen
 screenshot.
 
-**Queued:** water variant sheet (cheapest sheet in the game — land
-yields to it, interiors only); Stephen's hand pass over the six
+### Water sheet + shore grammar (July 25, 2026, evening)
+
+The queued "interiors only" water sheet landed, then immediately grew:
+Stephen's screenshot showed the land-side shallow band dying in a
+straight line at the cell boundary — and that line is the cell edge
+itself, so only art on the water side can break it. The seam grammar
+gained its last rule: **blend 0 draws its own shore** — water's edge
+cells bake the shallow fringe in (donor-opaque → deep, donor-
+transparent → shallow), land still scallops over it, both sides of a
+coast seam paint their own cell. Ripples stamp only interior + variant
+cells; a ripple on an edge cell wallpapers down the whole coastline
+(one sheet cell per mask). Screenshot-mode gained `--cam=x,y`.
+
+**Queued:** Stephen's hand pass over the seven
 generated sheets; THE VERB TEST VERDICT (everything the slice needs is
 now in the build); weighted-cost flow fields when difficult terrain
 lands; tooltip + pawn card per design spec sheet 04; m6x11 font;
