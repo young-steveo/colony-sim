@@ -36,8 +36,13 @@ Current layout:
   as terrain (`wall_wood.png` is the reference arrangement). Doors: 2
   cells (E-W wall, N-S wall). Ghost/blueprint rendering reuses these
   sheets tinted in shader — no separate ghost art.
-- `ui/` — UI chrome and icons (9-slice `panel.png` 24×24 with 8px corners,
-  16×16 icons). UI art is content: someday mods reskin it.
+- `ui/` — UI chrome and icons. 9-slice `panel.png` 24×24 with 8px corners.
+  Icons live in `icons.png`: **32×32 cells, 12 columns × 5 rows** (384×160)
+  — column = icon id, row = animation frame, row 0 = the static frame
+  (icons.pyxel is the reference arrangement; the trowel at column 0 is the
+  build tool). Icon style: `#2e222f` linework, white fill — reads over any
+  world background. UI renders icons at native size or integer multiples
+  only. UI art is content: someday mods reskin it.
 - `terrain/` — one sheet per material (`dirt.png` + `dirt.pyxel`), flat
   until a material needs more files. Constructed floors are terrain materials
   too. Each sheet is the standard **47-tile blob template, 12×4 cells, plus
