@@ -940,6 +940,44 @@ DONE/FAILED/INTERRUPTED outcomes, phases visible in the inspection
 panel. No behavior change intended; step-primitive library deliberately
 deferred until hauling provides the third real consumer.
 
+### The palette + terrain marathon (July 25, 2026)
+
+Biggest single day of the project. Landed, in order: **the painter's
+palette v1** (design brief → Claude Design exploration → foundations +
+flagship component spec, archived in docs/design/palette/ →
+implemented: B/P/I/X tools, 1–8 swatches, Tab shelves, shift-held chalk
+line, hold-Alt eyedropper, Esc pointer; tool-glyph cursors tried and
+rejected — icons angle up-right and 64px is bulky, so identity moved to
+the hover-outline color + chip badge; the 9-slice board is the
+designer's 24×24 master as content/ui/panel.png). **Worldgen fields**
+(elevation + rainfall + soil depth; wetness derived from rain +
+distance-to-water; all six terrain materials live, sheets derived from
+the dirt donor via tools/gen_terrain_sheets.gd). **Fertile/mud color
+swap** (dark loam is rich, terracotta is Georgia clay — Stephen's
+read). Then an evening of Stephen play-finding rendering flaws faster
+than they could hide, which drove the **seam grammar** to its fixed
+point: surfaces reveal the ground under them (grass thins to soil);
+substrates use blend priority (terrain.json `blend` — only the higher
+material scallops); the base layer renders 4×4 sub-pixels per tile so
+every SIDE reveals its own neighbor (single-color → majority-vote →
+quadrants → per-side, each stage killed by a screenshot); water reveals
+as shallows through land fringes. Worldgen got the gentle de-fizz pass,
+wetness jitter (breaks the mud shore crust into banks), and coastal
+erosion (no 1-cell islets). The invisible-grass hunt (donor export
+missing its three horizontal-strip cells, then a human/AI clobber race
+over dirt.png) ended with **sheet completeness in the test suite** —
+every defs-referenced blob sheet must have all 47 cells drawn. Standing
+lesson confirmed twice: the artist's eyeball at play zoom is the best
+renderer test we own; every fix this session started as a Stephen
+screenshot.
+
+**Queued:** water variant sheet (cheapest sheet in the game — land
+yields to it, interiors only); Stephen's hand pass over the six
+generated sheets; THE VERB TEST VERDICT (everything the slice needs is
+now in the build); weighted-cost flow fields when difficult terrain
+lands; tooltip + pawn card per design spec sheet 04; m6x11 font;
+palette micro-animations (want icon frames).
+
 ## 14. References
 
 - **Brian Walker (Brogue), RPS interview** — the dungeon as "a living and
