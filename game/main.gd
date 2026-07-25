@@ -364,7 +364,6 @@ func _update_paint_ui() -> void:
 	var over_ui := palette.get_global_rect().has_point(get_viewport().get_mouse_position())
 	var painting := tool != PaletteBar.Tool.POINTER and not over_ui and not _screenshot_mode
 	tool_cursor.visible = painting
-	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN if painting else Input.MOUSE_MODE_VISIBLE
 	tool_cursor.update_tool(tool, palette.loaded_swatch()["chip"])
 	var tile := get_global_mouse_position() / TerrainRenderer.TILE_PX
 	var cell := Vector2i(floori(tile.x), floori(tile.y))
@@ -373,7 +372,12 @@ func _update_paint_ui() -> void:
 			and Input.is_key_pressed(KEY_SHIFT) and _line_anchor.x != -9999:
 		line = BuildOverlay.cells_between(_line_anchor, cell)
 	var hover := cell if painting else Vector2i(-9999, -9999)
-	build_overlay.update_state(hover, line, tool == PaletteBar.Tool.CANCEL, cam.zoom.x)
+	var hover_color := BuildOverlay.GHOST_LIGHT
+	if tool == PaletteBar.Tool.CANCEL:
+		hover_color = BuildOverlay.WARNING
+	elif tool == PaletteBar.Tool.EYEDROPPER:
+		hover_color = BuildOverlay.SHEEN
+	build_overlay.update_state(hover, line, hover_color, cam.zoom.x)
 
 
 ## Nearest pawn within ~a tile of the click, or -1.

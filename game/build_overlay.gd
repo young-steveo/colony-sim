@@ -8,18 +8,22 @@ extends Node2D
 
 const GHOST_LIGHT := Color("8fd3ff")
 const WARNING := Color("e83b3b")
+const SHEEN := Color("c7dcd0")
 const TICK := Color.WHITE
 
 var hover_cell := Vector2i(-9999, -9999)
-var warn := false  # cancel tool in hand: the outline reads destructive
+# With the OS pointer as the cursor, the outline color IS the tool
+# identity at the point of action: ghost-light = paint, red = cancel
+# (destructive), sheen = eyedropper (picking, not marking).
+var hover_color := GHOST_LIGHT
 var line_cells: Array[Vector2i] = []
 var zoom := 3.0
 
 
-func update_state(hover: Vector2i, line: Array[Vector2i], warn_tint: bool, cam_zoom: float) -> void:
+func update_state(hover: Vector2i, line: Array[Vector2i], color: Color, cam_zoom: float) -> void:
 	hover_cell = hover
 	line_cells = line
-	warn = warn_tint
+	hover_color = color
 	zoom = cam_zoom
 	queue_redraw()
 
@@ -33,8 +37,7 @@ func _draw() -> void:
 		_draw_ticks(line_cells[0], w)
 		_draw_ticks(line_cells[line_cells.size() - 1], w)
 	if hover_cell.x != -9999:
-		var color := WARNING if warn else GHOST_LIGHT
-		draw_rect(Rect2(Vector2(hover_cell) * px, Vector2(px, px)).grow(-w * 0.5), color, false, w)
+		draw_rect(Rect2(Vector2(hover_cell) * px, Vector2(px, px)).grow(-w * 0.5), hover_color, false, w)
 
 
 ## White corner ticks marking a line anchor (the chalk line's pins).
