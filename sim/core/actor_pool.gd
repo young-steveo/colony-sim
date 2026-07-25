@@ -13,9 +13,29 @@ extends RefCounted
 ## A player rally command (responding == 1) overrides the brain until
 ## arrival — director-mode-lite; later, orders become heavy considerations
 ## inside the same scoring pass instead of a bypass.
+##
+## ACTIVITY MACHINES (GDD Architecture Commitments): the brain owns
+## transitions BETWEEN activities; an activity owns transitions WITHIN
+## itself. Each execution is a small phase machine — enter via
+## _start_action, tick returns ACT_RUNNING/ACT_DONE/ACT_FAILED, and every
+## way out (completion, failure, preemption, rally, rescue) releases pawn
+## state through the single exit hook (_exit_action). An activity may
+## finish itself (its success criterion can read the need it restores) but
+## it never weighs alternatives — "should this pawn be doing something
+## else" is solely the brain's question. The moment a phase transition
+## starts reading needs, the brain has leaked into the body: stop.
 
 const ARRIVE_DISTANCE := 0.05
-const WANDER_RADIUS := 8.0
+# Wandering is a stroll, not a random walk: legs keep roughly the current
+# heading (bounded steering turns, never a snap reversal unless walls force
+# one), pawns pause between legs, and they amble below task speed.
+const WANDER_LEG_MIN := 2.0
+const WANDER_LEG_MAX := 6.0
+const WANDER_TURN := PI * 0.45  # typical steering range per leg (~±81°)
+const WANDER_PAUSE_CHANCE := 0.55
+const WANDER_PAUSE_MIN_TICKS := 30  # 1 s at 30 tps
+const WANDER_PAUSE_MAX_TICKS := 150
+const WANDER_SPEED_SCALE := 0.6
 const JITTER := 0.35
 const DECIDE_INTERVAL := 15
 const COMMITMENT_BONUS := 1.1
@@ -24,6 +44,31 @@ const COMMITMENT_BONUS := 1.1
 # wandering off after two bites.
 const BUCKET_CUTOFF := 0.15
 const NO_ACTION := -1
+
+# Activity outcomes: every activity tick returns one of these. RUNNING
+# keeps the pawn; anything else ends the activity through the exit hook
+# (FAILED is DONE that couldn't finish — same cleanup, different story).
+const ACT_RUNNING := 0
+const ACT_DONE := 1
+const ACT_FAILED := 2
+
+# Activity phases. The enter hook picks the starting phase; phase names
+# surface in the inspection panel via phase_label (legibility contract).
+const WANDER_WAIT := 0
+const WANDER_STROLL := 1
+const EAT_GOTO := 0
+const EAT_CONSUME := 1
+const BEDREST_GOTO := 0
+const BEDREST_SLEEP := 1
+const BUILD_TRAVEL := 0
+const BUILD_WORK := 1
+const PHASE_NAMES := {
+	&"eat": ["goto", "consume"],
+	&"sleep": ["sleep"],
+	&"sleep_bed": ["goto", "sleep"],
+	&"build": ["travel", "work"],
+	&"wander": ["wait", "stroll"],
+}
 
 var count := 0
 var ids := PackedInt32Array()
@@ -35,9 +80,11 @@ var responding := PackedByteArray()
 var decision_counts := PackedInt32Array()
 var jitter := PackedVector2Array()
 var current_action := PackedInt32Array()
-var action_timer := PackedInt32Array()
+var phase := PackedInt32Array()  # phase within the current activity
+var phase_timer := PackedInt32Array()  # scratch timer; resets on phase change
 var build_claims := PackedInt32Array()  # blueprint cell being worked, or -1
 var build_cooldowns := PackedInt32Array()  # no build re-pick until this tick
+var headings := PackedFloat32Array()  # stroll direction, persists across legs
 var needs: Array[PackedFloat32Array] = []
 var last_scores := PackedFloat32Array()  # count * n_actions, row per pawn
 
@@ -62,23 +109,23 @@ func spawn(world: SimWorld, defs: AiDefs, n: int) -> void:
 	var _e7: int = decision_counts.resize(new_count)
 	var _e8: int = jitter.resize(new_count)
 	var _e9: int = current_action.resize(new_count)
-	var _e10: int = action_timer.resize(new_count)
+	var _e10: int = phase.resize(new_count)
 	var _e11: int = last_scores.resize(new_count * _n_actions)
 	var _e13: int = build_claims.resize(new_count)
 	var _e14: int = build_cooldowns.resize(new_count)
+	var _e15: int = headings.resize(new_count)
+	var _e16: int = phase_timer.resize(new_count)
 	for nd: int in _n_needs:
 		var _e12: int = needs[nd].resize(new_count)
 	for i: int in range(count, new_count):
 		var id := _spawned_total
 		_spawned_total += 1
 		var s := SimRng.stream(SimRng.key([world.world_seed, "spawn", id]))
-		var pos := Vector2(world.width * 0.5, world.height * 0.5)
-		for attempt: int in 64:
-			var x := s.next_range(0, world.width - 1)
-			var y := s.next_range(0, world.height - 1)
-			if world.is_walkable(x, y):
-				pos = Vector2(x + 0.5, y + 0.5)
-				break
+		# The colony starts as a knot at the map's heart: pawn id takes the
+		# id-th walkable cell scanning outward from the center, so spawns
+		# cluster on screen (the camera opens there) without stacking.
+		var cell := _center_spawn_cell(world, id)
+		var pos := Vector2(cell) + Vector2(0.5, 0.5)
 		ids[i] = id
 		positions[i] = pos
 		prev_positions[i] = pos
@@ -88,9 +135,11 @@ func spawn(world: SimWorld, defs: AiDefs, n: int) -> void:
 		decision_counts[i] = 0
 		jitter[i] = Vector2((s.nextf() - 0.5) * JITTER, (s.nextf() - 0.5) * JITTER)
 		current_action[i] = NO_ACTION
-		action_timer[i] = 0
+		phase[i] = 0
+		phase_timer[i] = 0
 		build_claims[i] = -1
 		build_cooldowns[i] = 0
+		headings[i] = s.nextf() * TAU
 		for nd: int in _n_needs:
 			# Staggered starting levels so the colony doesn't eat and sleep
 			# in lockstep.
@@ -98,11 +147,12 @@ func spawn(world: SimWorld, defs: AiDefs, n: int) -> void:
 	count = new_count
 
 
-## A rally command exists: everyone answers the call.
+## A rally command exists: everyone answers the call. Rallying is an
+## interruption like any other — the current activity exits cleanly.
 func rally() -> void:
 	for i: int in count:
 		responding[i] = 1
-		targets[i] = positions[i]
+		_stop_action(i)
 
 
 func need_value(need_idx: int, i: int) -> float:
@@ -126,17 +176,20 @@ func tick(ctx: AiContext, dt: float) -> void:
 		if current_action[i] == NO_ACTION or (ctx.tick + ids[i]) % DECIDE_INTERVAL == 0:
 			_decide(ctx, i)
 		var action := ctx.defs.actions[current_action[i]]
+		var outcome := ACT_RUNNING
 		match action.execution:
 			&"eat":
-				_tick_eat(ctx, i, action, dt)
+				outcome = _eat_tick(ctx, i, action, dt)
 			&"sleep":
-				_tick_sleep(ctx, i, action, dt)
+				outcome = _sleep_tick(ctx, i, action, dt)
 			&"sleep_bed":
-				_tick_sleep_bed(ctx, i, action, dt)
+				outcome = _sleep_bed_tick(ctx, i, action, dt)
 			&"build":
-				_tick_build(ctx, i, dt)
+				outcome = _build_tick(ctx, i, dt)
 			&"wander":
-				_tick_wander(ctx, i, dt)
+				outcome = _wander_tick(ctx, i, dt)
+		if outcome != ACT_RUNNING:
+			_stop_action(i)  # re-decide next tick
 
 
 # --- decision -------------------------------------------------------------
@@ -178,6 +231,10 @@ func _decide(ctx: AiContext, i: int) -> void:
 			chosen = best
 			break
 	if chosen != current_action[i]:
+		# Preemption is the brain's right, but the losing activity always
+		# gets its exit — claims and phase state never leak across.
+		if current_action[i] != NO_ACTION:
+			_exit_action(i)
 		_start_action(ctx, i, chosen)
 
 
@@ -227,96 +284,142 @@ func _field_distance(ctx: AiContext, i: int, field: FlowField) -> float:
 	return float(dist) / float(FlowField.COST_ORTH)
 
 
+## Enter hook: the only way into an activity.
 func _start_action(ctx: AiContext, i: int, action_idx: int) -> void:
 	current_action[i] = action_idx
-	action_timer[i] = 0
+	phase[i] = 0
+	phase_timer[i] = 0
+	targets[i] = positions[i]
 	match ctx.defs.actions[action_idx].execution:
 		&"wander":
-			decision_counts[i] += 1
-			var s := SimRng.stream(
-				SimRng.key([ctx.world.world_seed, "decide", ids[i], decision_counts[i]])
-			)
-			targets[i] = _local_wander(ctx.world, positions[i], s)
-		_:
-			targets[i] = positions[i]
+			_wander_enter(ctx, i)
 
 
-func _complete(i: int) -> void:
-	current_action[i] = NO_ACTION  # re-decide next tick
+## Exit hook: the ONLY place pawn-local activity state is released. Every
+## way out of an activity — DONE, FAILED, preemption, rally, rescue,
+## displacement — funnels through here so nothing leaks into the next one.
+func _exit_action(i: int) -> void:
+	phase[i] = 0
+	phase_timer[i] = 0
 	targets[i] = positions[i]
 	build_claims[i] = -1
 
 
-# --- execution ------------------------------------------------------------
+func _stop_action(i: int) -> void:
+	_exit_action(i)
+	current_action[i] = NO_ACTION  # re-decide next tick
 
 
+## Phase transition inside an activity. The timer always resets: a phase
+## may not smuggle state across the boundary.
+func _set_phase(i: int, p: int) -> void:
+	phase[i] = p
+	phase_timer[i] = 0
+
+
+## Inspection-panel label for the pawn's current phase (legibility
+## contract: the player can always see what a pawn is doing and why).
+func phase_label(defs: AiDefs, i: int) -> String:
+	if current_action[i] == NO_ACTION:
+		return ""
+	var names: Array = PHASE_NAMES.get(defs.actions[current_action[i]].execution, [])
+	if phase[i] >= names.size():
+		return ""
+	return names[phase[i]]
+
+
+# --- activities -----------------------------------------------------------
+# Each activity is a phase machine: transitions between phases first, then
+# tick the current phase. Return values end the activity; only the brain
+# starts a different one.
+
+
+## Rally is not an activity — it's the player's hand overriding the brain
+## entirely (see header). It gets the same clean exit on arrival.
 func _tick_rally(ctx: AiContext, i: int, dt: float) -> void:
 	if not _follow_field(ctx, i, ctx.command_field, dt):
 		responding[i] = 0
-		_complete(i)
+		_stop_action(i)
 
 
-func _tick_eat(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> void:
+func _eat_tick(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> int:
 	var cell := _cell_of(ctx.world, positions[i])
+	# Standing on berries is the whole transition condition, both ways
+	# (the bush can empty under us mid-meal).
 	if ctx.bushes.has_berries_at(cell):
-		action_timer[i] += 1
-		if action_timer[i] >= action.ticks_per_bite:
-			action_timer[i] = 0
+		if phase[i] != EAT_CONSUME:
+			_set_phase(i, EAT_CONSUME)
+	elif phase[i] != EAT_GOTO:
+		_set_phase(i, EAT_GOTO)
+
+	if phase[i] == EAT_CONSUME:
+		phase_timer[i] += 1
+		if phase_timer[i] >= action.ticks_per_bite:
+			phase_timer[i] = 0
 			var _ate: bool = ctx.bushes.consume_at(cell)
 			var hunger_idx := action.considerations[0].need_idx
 			needs[hunger_idx][i] = minf(needs[hunger_idx][i] + action.restore_per_bite, 1.0)
 			if needs[hunger_idx][i] >= 0.98:
-				_complete(i)
-		return
+				return ACT_DONE
+		return ACT_RUNNING
 	if ctx.food_field == null or not _follow_field(ctx, i, ctx.food_field, dt):
-		# Unreachable, or the bush emptied under us: give up and re-decide.
-		_complete(i)
+		return ACT_FAILED  # unreachable: give up and re-decide
+	return ACT_RUNNING
 
 
-func _tick_sleep(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> void:
+func _sleep_tick(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> int:
 	# Prefer not to bed down on someone's construction site — but if
 	# there's no open ground one step away (deep in a painted field),
 	# sleep on the ghost anyway: the occupancy rule defers that cell's
 	# construction, and an unsleepable pawn is a starving deadlock.
 	var cell := _cell_of(ctx.world, positions[i])
 	if ctx.blueprints.has_at(cell) and _step_off_blueprints(ctx, i, cell, dt):
-		return
+		return ACT_RUNNING
 	var rest_idx := action.considerations[0].need_idx
 	needs[rest_idx][i] = minf(needs[rest_idx][i] + action.restore_per_second * dt, 1.0)
-	if needs[rest_idx][i] >= action.wake_threshold:
-		_complete(i)
+	return ACT_DONE if needs[rest_idx][i] >= action.wake_threshold else ACT_RUNNING
 
 
-func _tick_sleep_bed(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> void:
+func _sleep_bed_tick(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> int:
 	var cell := _cell_of(ctx.world, positions[i])
 	if ctx.world.structure_at_cell(cell) == SimWorld.STRUCT_BED:
+		if phase[i] != BEDREST_SLEEP:
+			_set_phase(i, BEDREST_SLEEP)
+	elif phase[i] != BEDREST_GOTO:
+		_set_phase(i, BEDREST_GOTO)
+
+	if phase[i] == BEDREST_SLEEP:
 		var rest_idx := action.considerations[0].need_idx
 		needs[rest_idx][i] = minf(needs[rest_idx][i] + action.restore_per_second * dt, 1.0)
-		if needs[rest_idx][i] >= action.wake_threshold:
-			_complete(i)
-		return
+		return ACT_DONE if needs[rest_idx][i] >= action.wake_threshold else ACT_RUNNING
 	if ctx.bed_field == null or not _follow_field(ctx, i, ctx.bed_field, dt):
-		_complete(i)
+		return ACT_FAILED
+	return ACT_RUNNING
 
 
 ## Builders work standing exactly one tile beside the blueprint — never on
 ## it — and refuse walls that would seal them into a pocket. Blueprint
 ## ghosts are scaffolding: pawns stand on them freely (solid fills need it),
 ## but a cell is never built while anyone occupies it.
-func _tick_build(ctx: AiContext, i: int, dt: float) -> void:
+func _build_tick(ctx: AiContext, i: int, dt: float) -> int:
 	var cell := _cell_of(ctx.world, positions[i])
+	# A live claim is the WORK-phase condition; it revalidates every tick
+	# because the world moves under builders (cancelled ghosts, walls
+	# built by others, our own arrival at a new frontier).
 	var claim := build_claims[i]
 	if claim >= 0 and (not ctx.blueprints.has_at(claim) or not _cells_adjacent(ctx.world, cell, claim)):
 		claim = -1
 	if claim < 0:
 		claim = _pick_adjacent_blueprint(ctx, cell)
 		build_claims[i] = claim
-	if claim >= 0:
+	if phase[i] != (BUILD_WORK if claim >= 0 else BUILD_TRAVEL):
+		_set_phase(i, BUILD_WORK if claim >= 0 else BUILD_TRAVEL)
+
+	if phase[i] == BUILD_WORK:
 		targets[i] = positions[i]
 		if not ctx.blueprints.add_worker(claim):
 			build_cooldowns[i] = ctx.tick + 45
-			_complete(i)  # crowded this tick; re-decide
-			return
+			return ACT_FAILED  # crowded this tick; re-decide
 		var mat := ctx.blueprints.material_at(claim)
 		var built := ctx.blueprints.add_work(claim, dt)
 		if built != SimWorld.STRUCT_NONE:
@@ -328,13 +431,14 @@ func _tick_build(ctx: AiContext, i: int, dt: float) -> void:
 			# decide cadence.) Re-rolling life plans after every wall is
 			# how construction turns into a colony-wide relay race.
 			build_claims[i] = -1
-		return
+		return ACT_RUNNING
 	# No workable job here: travel toward the build frontier, stopping one
 	# cell short of the goal (you can't build what you stand on). Blocked or
 	# out of road: cool down so we don't statue in place on a stale field.
 	if ctx.blueprint_field == null or not _follow_field(ctx, i, ctx.blueprint_field, dt, true):
 		build_cooldowns[i] = ctx.tick + 45
-		_complete(i)
+		return ACT_FAILED
+	return ACT_RUNNING
 
 
 ## Adjacent blueprint with worker capacity that is safe to build: never one
@@ -433,7 +537,7 @@ func _rescue_if_stuck(world: SimWorld, i: int) -> void:
 				if world.is_walkable(x + dx, y + dy):
 					positions[i] = Vector2(x + dx + 0.5, y + dy + 0.5) + jitter[i]
 					prev_positions[i] = positions[i]
-					_complete(i)
+					_stop_action(i)
 					return
 
 
@@ -452,16 +556,36 @@ func _displace_from(world: SimWorld, cell: int) -> void:
 			if world.is_walkable(nx, ny):
 				positions[i] = Vector2(nx + 0.5, ny + 0.5) + jitter[i]
 				prev_positions[i] = positions[i]
-				_complete(i)
+				_stop_action(i)
 				break
 
 
-func _tick_wander(ctx: AiContext, i: int, dt: float) -> void:
+## A stroll alternates walking legs with standing pauses; each DONE comes
+## back through the brain, and re-entry rolls the next leg or pause.
+func _wander_enter(ctx: AiContext, i: int) -> void:
+	decision_counts[i] += 1
+	var s := SimRng.stream(
+		SimRng.key([ctx.world.world_seed, "decide", ids[i], decision_counts[i]])
+	)
+	if s.nextf() < WANDER_PAUSE_CHANCE:
+		_set_phase(i, WANDER_WAIT)
+		phase_timer[i] = WANDER_PAUSE_MIN_TICKS + s.next_range(
+			0, WANDER_PAUSE_MAX_TICKS - WANDER_PAUSE_MIN_TICKS
+		)
+	else:
+		_set_phase(i, WANDER_STROLL)
+		targets[i] = _pick_stroll_leg(ctx.world, i, s)
+
+
+func _wander_tick(ctx: AiContext, i: int, dt: float) -> int:
+	if phase[i] == WANDER_WAIT:
+		phase_timer[i] -= 1
+		return ACT_DONE if phase_timer[i] <= 0 else ACT_RUNNING
 	if not ctx.world.is_walkable(floori(targets[i].x), floori(targets[i].y)):
-		_complete(i)
-		return
-	if _move_toward_target(i, speeds[i] * dt):
-		_complete(i)
+		return ACT_FAILED  # a wall landed on the destination mid-leg
+	if _move_toward_target(i, speeds[i] * WANDER_SPEED_SCALE * dt):
+		return ACT_DONE
+	return ACT_RUNNING
 
 
 # --- movement -------------------------------------------------------------
@@ -530,12 +654,40 @@ static func _cell_of(world: SimWorld, pos: Vector2) -> int:
 	return floori(pos.y) * world.width + floori(pos.x)
 
 
-func _local_wander(world: SimWorld, pos: Vector2, s: SimRng.Stream) -> Vector2:
+## The order-th walkable cell scanning outward from the map center in
+## deterministic ring order (Chebyshev rings, row-major within each ring).
+static func _center_spawn_cell(world: SimWorld, order: int) -> Vector2i:
+	@warning_ignore("integer_division")
+	var cx := world.width / 2
+	@warning_ignore("integer_division")
+	var cy := world.height / 2
+	var seen := 0
+	for r: int in maxi(world.width, world.height):
+		for dy: int in range(-r, r + 1):
+			for dx: int in range(-r, r + 1):
+				if maxi(absi(dx), absi(dy)) != r:
+					continue
+				if world.is_walkable(cx + dx, cy + dy):
+					if seen == order:
+						return Vector2i(cx + dx, cy + dy)
+					seen += 1
+	return Vector2i(cx, cy)
+
+
+## One stroll leg: steer from the pawn's current heading by a bounded,
+## center-weighted turn. The cone widens toward a full U-turn only as
+## attempts fail, so reversals happen when geometry demands them, not by
+## coin flip.
+func _pick_stroll_leg(world: SimWorld, i: int, s: SimRng.Stream) -> Vector2:
+	var pos := positions[i]
 	for attempt: int in 16:
-		var angle := s.nextf() * TAU
-		var radius := 1.0 + s.nextf() * WANDER_RADIUS
+		var spread := WANDER_TURN + (PI - WANDER_TURN) * float(attempt) / 15.0
+		var turn := (s.nextf() + s.nextf() - 1.0) * spread
+		var angle := headings[i] + turn
+		var radius := WANDER_LEG_MIN + s.nextf() * (WANDER_LEG_MAX - WANDER_LEG_MIN)
 		var t := pos + Vector2.from_angle(angle) * radius
 		if _line_walkable(world, pos, t):
+			headings[i] = wrapf(angle, -PI, PI)
 			return t
 	return pos
 
