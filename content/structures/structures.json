@@ -1,6 +1,7 @@
 {
 	"wall_materials": [
 		{ "id": "wood", "sheet": "res://content/structures/wall_wood.png" },
-		{ "id": "marble", "sheet": "res://content/structures/wall_marble.png" }
+		{ "id": "marble", "sheet": "res://content/structures/wall_marble.png" },
+		{ "id": "granite", "sheet": "res://content/structures/wall_granite.png" }
 	]
 }
