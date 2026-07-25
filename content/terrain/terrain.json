@@ -2,9 +2,9 @@
 	"materials": [
 		{ "id": "water", "color": "#0b5e65", "walkable": false },
 		{ "id": "dirt", "color": "#966c6c", "walkable": true, "sheet": "res://content/terrain/dirt.png" },
-		{ "id": "stone", "color": "#7f708a", "walkable": true }
+		{ "id": "stone", "color": "#7f708a", "walkable": true, "sheet": "res://content/terrain/stone.png" }
 	],
 	"surfaces": [
-		{ "id": "grass", "color": "#676633" }
+		{ "id": "grass", "color": "#676633", "sheet": "res://content/terrain/grass.png" }
 	]
 }

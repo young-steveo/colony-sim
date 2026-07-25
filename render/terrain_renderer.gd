@@ -16,19 +16,14 @@ extends Node2D
 ## cells, which is what keeps big fields from reading as a stamp grid.
 ## Terrain is immutable in v1, so build() runs once per map.
 ##
-## Tile stack: a cell's VISIBLE identity is its surface when it has one
-## (grass fully covers its dirt while surfaces are flat placeholders),
-## else its substrate. Autotiling and neighbor-reveal both run on visible
-## identity, so bare dirt scallops against grass fields. When the first
-## surface SHEET lands (grass art), surfaces become a second overlay pass
-## and substrate connectivity switches to substrate-only — the grass
-## fringe will reveal dirt art through its own transitions instead.
+## Tile stack: substrates autotile against substrates (dirt runs
+## CONTINUOUSLY under grass fields), and sheeted surfaces are a second
+## overlay pass on top — the grass fringe reveals real dirt art through
+## its own transitions. A surface without art yet still flat-covers its
+## cell in the base pass, so future sheetless surfaces degrade gracefully.
 
 const TILE_PX := 16
 const BLOB_SHADER := preload("res://render/autotile_blob.gdshader")
-# Visible-id space: substrates use their byte; surfaced cells map above
-# this base so the two can never collide.
-const SURFACE_ID_BASE := 256
 
 # Neighbor scan order for the reveal color: cardinals first — an edge cell
 # shows the material it directly abuts, diagonals only decide corners.
@@ -44,7 +39,10 @@ func build(world: SimWorld, defs: TerrainDefs) -> void:
 	_build_base(world, defs)
 	for mat: int in defs.count():
 		if defs.sheets[mat] != "":
-			_build_overlay(world, defs, mat)
+			_build_overlay(world, defs.sheets[mat], world.tiles, mat, defs.ids[mat])
+	for s: int in range(1, defs.surface_ids.size()):
+		if defs.surface_sheets[s] != "":
+			_build_overlay(world, defs.surface_sheets[s], world.surfaces, s, defs.surface_ids[s])
 
 
 func _build_base(world: SimWorld, defs: TerrainDefs) -> void:
@@ -56,11 +54,16 @@ func _build_base(world: SimWorld, defs: TerrainDefs) -> void:
 	var img := Image.create(world.width, world.height, false, Image.FORMAT_RGB8)
 	for y: int in world.height:
 		for x: int in world.width:
-			var vid := _visible_id(world, x, y)
-			var sheeted := vid < SURFACE_ID_BASE and defs.sheets[vid] != ""
-			if sheeted:
-				vid = _reveal_id(world, x, y, vid)
-			var c := _visible_color(defs, vid)
+			var cell := y * world.width + x
+			var mat := world.tiles[cell]
+			var surf := world.surfaces[cell]
+			var c: Color
+			if surf != SimWorld.SURF_NONE and defs.surface_sheets[surf] == "":
+				c = defs.surface_colors[surf]  # sheetless surface flat-covers
+			elif defs.sheets[mat] != "":
+				c = defs.colors[_reveal_substrate(world, x, y, mat)]
+			else:
+				c = defs.colors[mat]
 			var k := SimRng.combine(SimRng.combine(shade_key, x), y)
 			var shade := 0.92 + 0.16 * SimRng.randf(k)
 			img.set_pixel(x, y, Color(c.r * shade, c.g * shade, c.b * shade))
@@ -68,45 +71,38 @@ func _build_base(world: SimWorld, defs: TerrainDefs) -> void:
 	add_child(base)
 
 
-static func _visible_id(world: SimWorld, x: int, y: int) -> int:
-	var cell := clampi(y, 0, world.height - 1) * world.width + clampi(x, 0, world.width - 1)
-	var s := world.surfaces[cell]
-	return SURFACE_ID_BASE + s if s != SimWorld.SURF_NONE else world.tiles[cell]
-
-
-static func _visible_color(defs: TerrainDefs, vid: int) -> Color:
-	if vid >= SURFACE_ID_BASE:
-		return defs.surface_colors[vid - SURFACE_ID_BASE]
-	return defs.colors[vid]
-
-
-## What shows through a sheeted cell's transition notches: the first
-## visibly different neighbor in scan order, or the cell's own identity
+## What shows through a sheeted substrate's transition notches: the first
+## different neighbor substrate in scan order, or the cell's own material
 ## when fully interior (covered by the overlay anyway).
-func _reveal_id(world: SimWorld, x: int, y: int, vid: int) -> int:
+func _reveal_substrate(world: SimWorld, x: int, y: int, mat: int) -> int:
 	for offset: Vector2i in NEIGHBOR_ORDER:
-		var n := _visible_id(world, x + offset.x, y + offset.y)
-		if n != vid:
+		var n := world.tile_at(
+			clampi(x + offset.x, 0, world.width - 1), clampi(y + offset.y, 0, world.height - 1))
+		if n != mat:
 			return n
-	return vid
+	return mat
 
 
-func _build_overlay(world: SimWorld, defs: TerrainDefs, mat: int) -> void:
-	var tex: Texture2D = load(defs.sheets[mat])
+## One blob layer: `layer` is the byte array it reads (substrates or
+## surfaces) and `value` the id it matches — same autotiler either way.
+func _build_overlay(
+	world: SimWorld, sheet: String, layer: PackedByteArray, value: int, id_str: String
+) -> void:
+	var tex: Texture2D = load(sheet)
 	var variants := _interior_variants(tex)
-	var variant_key := SimRng.key([world.world_seed, "terrain_variant", defs.ids[mat]])
+	var variant_key := SimRng.key([world.world_seed, "terrain_variant", id_str])
 
 	var cells := PackedInt32Array()
 	for cell: int in world.width * world.height:
-		if world.tiles[cell] == mat and world.surfaces[cell] == SimWorld.SURF_NONE:
+		if layer[cell] == value:
 			var _e: bool = cells.push_back(cell)
 
-	var layer := MultiMeshInstance2D.new()
-	layer.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	layer.texture = tex
+	var layer_node := MultiMeshInstance2D.new()
+	layer_node.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	layer_node.texture = tex
 	var shader_mat := ShaderMaterial.new()
 	shader_mat.shader = BLOB_SHADER
-	layer.material = shader_mat
+	layer_node.material = shader_mat
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_2D
 	mm.use_custom_data = true
@@ -115,8 +111,8 @@ func _build_overlay(world: SimWorld, defs: TerrainDefs, mat: int) -> void:
 	quad.size = Vector2(TILE_PX, TILE_PX)
 	mm.mesh = quad
 	mm.instance_count = cells.size()
-	layer.multimesh = mm
-	add_child(layer)
+	layer_node.multimesh = mm
+	add_child(layer_node)
 	# Same hashed per-tile shade the base pass uses — without it, sheeted
 	# terrain renders uniformly bright and reads flatter than the flat
 	# colors around it.
@@ -131,10 +127,10 @@ func _build_overlay(world: SimWorld, defs: TerrainDefs, mat: int) -> void:
 		@warning_ignore("integer_division")
 		var y := cell / w
 		var mask := Autotile.mask_from(
-			_same(world, x, y - 1, mat), _same(world, x + 1, y, mat),
-			_same(world, x, y + 1, mat), _same(world, x - 1, y, mat),
-			_same(world, x + 1, y - 1, mat), _same(world, x + 1, y + 1, mat),
-			_same(world, x - 1, y + 1, mat), _same(world, x - 1, y - 1, mat))
+			_same(layer, world, x, y - 1, value), _same(layer, world, x + 1, y, value),
+			_same(layer, world, x, y + 1, value), _same(layer, world, x - 1, y, value),
+			_same(layer, world, x + 1, y - 1, value), _same(layer, world, x + 1, y + 1, value),
+			_same(layer, world, x - 1, y + 1, value), _same(layer, world, x - 1, y - 1, value))
 		var sheet_cell := Autotile.cell_for(mask)
 		if sheet_cell == interior_cell and variants.size() > 1:
 			var roll := SimRng.randf(SimRng.combine(variant_key, cell))
@@ -147,11 +143,13 @@ func _build_overlay(world: SimWorld, defs: TerrainDefs, mat: int) -> void:
 		mm.set_instance_color(i, Color(shade, shade, shade))
 
 
-## Same-visible-identity check with clamp-to-edge semantics: the map
-## border acts as a continuation, so edge-of-map terrain never draws a
-## transition against the void.
-static func _same(world: SimWorld, x: int, y: int, mat: int) -> bool:
-	return _visible_id(world, x, y) == mat
+## Same-value check on a terrain layer with clamp-to-edge semantics: the
+## map border acts as a continuation, so edge-of-map terrain never draws
+## a transition against the void.
+static func _same(layer: PackedByteArray, world: SimWorld, x: int, y: int, value: int) -> bool:
+	var cx := clampi(x, 0, world.width - 1)
+	var cy := clampi(y, 0, world.height - 1)
+	return layer[cy * world.width + cx] == value
 
 
 ## Interior pool: the canonical fully-surrounded cell plus every non-empty
