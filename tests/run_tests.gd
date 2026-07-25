@@ -14,6 +14,7 @@ func _init() -> void:
 	_test_ai()
 	_test_building()
 	_test_wall_materials()
+	_test_sheet_completeness()
 	_test_simulation()
 	print("")
 	print("%d passed, %d failed" % [_passes, _failures])
@@ -447,6 +448,45 @@ func _test_wall_materials() -> void:
 	sim.world.set_structure(c2, built, mat)
 	_check(built == SimWorld.STRUCT_WALL, "blueprint completes into a wall")
 	_check(sim.world.structure_material_at(c2) == 1, "built wall keeps its material")
+
+
+## Every blob sheet the defs reference must have art in all 47 mapped
+## cells. Guards the invisible-tile class of bug: a blank cell renders a
+## real material as nothing (found via an isolated grass patch whose
+## horizontal pieces were missing from the donor export).
+func _test_sheet_completeness() -> void:
+	print("Sheet completeness:")
+	var sheets: Array[String] = []
+	var tdefs := TerrainDefs.load_defs()
+	for i: int in tdefs.count():
+		if tdefs.sheets[i] != "":
+			sheets.append(tdefs.sheets[i])
+	for i: int in tdefs.surface_ids.size():
+		if tdefs.surface_sheets[i] != "":
+			sheets.append(tdefs.surface_sheets[i])
+	var sdefs := StructureDefs.load_defs()
+	for i: int in sdefs.wall_material_count():
+		sheets.append(sdefs.wall_material_sheets[i])
+	for path: String in sheets:
+		var img := Image.load_from_file(ProjectSettings.globalize_path(path))
+		var empty := 0
+		for idx: int in Autotile.MASKS.size():
+			if Autotile.MASKS[idx] < 0:
+				continue
+			var cx := idx % Autotile.COLS
+			@warning_ignore("integer_division")
+			var cy := idx / Autotile.COLS
+			var used := false
+			for y: int in 16:
+				for x: int in 16:
+					if img.get_pixel(cx * 16 + x, cy * 16 + y).a > 0.0:
+						used = true
+						break
+				if used:
+					break
+			if not used:
+				empty += 1
+		_check(empty == 0, "%s: all 47 blob cells drawn (%d empty)" % [path.get_file(), empty])
 
 
 func _test_simulation() -> void:
