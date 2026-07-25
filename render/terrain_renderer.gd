@@ -25,11 +25,16 @@ extends Node2D
 const TILE_PX := 16
 const BLOB_SHADER := preload("res://render/autotile_blob.gdshader")
 
-# Neighbor scan order for the reveal color: cardinals first — an edge cell
-# shows the material it directly abuts, diagonals only decide corners.
-const NEIGHBOR_ORDER: Array[Vector2i] = [
-	Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0),
-	Vector2i(1, -1), Vector2i(1, 1), Vector2i(-1, 1), Vector2i(-1, -1),
+# The base renders at QUADRANT resolution (2x2 sub-pixels per tile): one
+# reveal color per cell cannot be right when a cell's sides face different
+# materials (a shoreline mud cell showed water teal in its GRASS-facing
+# notches). Each quadrant consults only its own corner's neighbors —
+# two cardinals, then the diagonal.
+const QUAD_SIDES: Array = [
+	[Vector2i(-1, 0), Vector2i(0, -1), Vector2i(-1, -1)],  # top-left
+	[Vector2i(1, 0), Vector2i(0, -1), Vector2i(1, -1)],  # top-right
+	[Vector2i(-1, 0), Vector2i(0, 1), Vector2i(-1, 1)],  # bottom-left
+	[Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)],  # bottom-right
 ]
 
 
@@ -60,57 +65,49 @@ func build(world: SimWorld, defs: TerrainDefs) -> void:
 func _build_base(world: SimWorld, defs: TerrainDefs) -> void:
 	var base := Sprite2D.new()
 	base.centered = false
-	base.scale = Vector2(TILE_PX, TILE_PX)
+	base.scale = Vector2(TILE_PX / 2.0, TILE_PX / 2.0)
 	base.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var shade_key := SimRng.key([world.world_seed, "tile_shade"])
-	var img := Image.create(world.width, world.height, false, Image.FORMAT_RGB8)
+	var img := Image.create(world.width * 2, world.height * 2, false, Image.FORMAT_RGB8)
 	for y: int in world.height:
 		for x: int in world.width:
 			var cell := y * world.width + x
 			var mat := world.tiles[cell]
 			var surf := world.surfaces[cell]
-			var c: Color
-			if surf != SimWorld.SURF_NONE and defs.surface_sheets[surf] == "":
-				c = defs.surface_colors[surf]  # sheetless surface flat-covers
-			elif surf != SimWorld.SURF_NONE:
-				# Sheeted surface: its fringe exposes the ground it grows ON,
-				# not the neighbor — grass thins to soil before soil meets
-				# anything else (Stephen's rule, July 2026).
-				c = defs.colors[mat]
-			elif defs.sheets[mat] != "":
-				c = defs.colors[_reveal_substrate(world, defs, x, y, mat)]
-			else:
-				c = defs.colors[mat]
 			var k := SimRng.combine(SimRng.combine(shade_key, x), y)
-			var shade := 0.92 + 0.16 * SimRng.randf(k)
-			img.set_pixel(x, y, Color(c.r * shade, c.g * shade, c.b * shade))
+			var shade := 0.92 + 0.16 * SimRng.randf(k)  # one shade per TILE
+			for q: int in 4:
+				var c: Color
+				if surf != SimWorld.SURF_NONE and defs.surface_sheets[surf] == "":
+					c = defs.surface_colors[surf]  # sheetless surface flat-covers
+				elif surf != SimWorld.SURF_NONE:
+					# Sheeted surface: its fringe exposes the ground it grows
+					# ON, not the neighbor — grass thins to soil before soil
+					# meets anything else (Stephen's rule, July 2026).
+					c = defs.colors[mat]
+				elif defs.sheets[mat] != "":
+					c = defs.colors[_quadrant_reveal(world, defs, x, y, mat, q)]
+				else:
+					c = defs.colors[mat]
+				img.set_pixel(
+					x * 2 + (q & 1), y * 2 + (q >> 1),
+					Color(c.r * shade, c.g * shade, c.b * shade))
 	base.texture = ImageTexture.create_from_image(img)
 	add_child(base)
 
 
-## What shows through a bare substrate's transition notches. Substrates
-## always yield to substrates — at a grass-field boundary the grass has
-## already thinned to soil (see above), so stone meeting grassland
-## correctly reveals the soil line. The base image is ONE pixel per tile,
-## so a cell gets a single reveal color under all its notches even when
-## it borders different materials on different sides: take the MAJORITY
-## differing neighbor (sides outvote corners 2:1), so one mud corner
-## can't speak for three dirt sides.
-func _reveal_substrate(world: SimWorld, defs: TerrainDefs, x: int, y: int, mat: int) -> int:
-	var votes := {}
-	var best := mat
-	var best_v := 0
-	for i: int in NEIGHBOR_ORDER.size():
-		var offset := NEIGHBOR_ORDER[i]
+## What shows through a bare substrate's transition notches in ONE
+## quadrant of the cell: the first differing lower-blend neighbor among
+## that corner's two cardinals and diagonal (we only scallop toward
+## lower ground — higher-blend neighbors are connected). Falls back to
+## the cell's own color, which the overlay art covers anyway.
+func _quadrant_reveal(world: SimWorld, defs: TerrainDefs, x: int, y: int, mat: int, q: int) -> int:
+	for offset: Vector2i in QUAD_SIDES[q]:
 		var n := world.tile_at(
 			clampi(x + offset.x, 0, world.width - 1), clampi(y + offset.y, 0, world.height - 1))
-		if n == mat or defs.blend[n] > defs.blend[mat]:
-			continue  # we only scallop toward LOWER-blend ground
-		votes[n] = int(votes.get(n, 0)) + (2 if i < 4 else 1)  # cardinals first in order
-		if votes[n] > best_v:
-			best_v = votes[n]
-			best = n
-	return best
+		if n != mat and defs.blend[n] < defs.blend[mat]:
+			return n
+	return mat
 
 
 ## One blob layer: `layer` is the byte array it reads (substrates or
