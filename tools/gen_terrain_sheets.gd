@@ -28,10 +28,10 @@ func _init() -> void:
 	var donor := Image.load_from_file(ProjectSettings.globalize_path("res://content/terrain/dirt.png"))
 	_gen(donor, "stone", Color("7f708a"), _stone_features)
 	_gen(donor, "grass", Color("676633"), _grass_features)
-	_gen(donor, "dirt_fertile", Color("9e4539"), _fertile_features)
+	_gen(donor, "dirt_fertile", Color("4c3e24"), _fertile_features)
 	_gen(donor, "dirt_rocky", Color("966c6c"), _rocky_features)
 	_gen(donor, "sand", Color("ab947a"), _sand_features)
-	_gen(donor, "mud", Color("4c3e24"), _mud_features)
+	_gen(donor, "mud", Color("9e4539"), _mud_features)
 	print("done")
 	quit()
 
@@ -96,7 +96,7 @@ func _fertile_features(img: Image, donor: Image, ox: int, oy: int, rng: Rng) -> 
 		var pts: Array = [Vector2i(x, y), Vector2i(x + 1, y)]
 		if rng.chance(0.5):
 			pts.append(Vector2i(x + rng.range_i(0, 1), y + 1))
-		var _ok := _stamp(img, donor, pts, Color("7a3045"))
+		var _ok := _stamp(img, donor, pts, Color("676633"))
 
 ## Rocky dirt: the one deliberate cross-ramp — stone-colored pebbles with
 ## an ink-side shadow pixel; "don't farm here" is information.
@@ -135,7 +135,7 @@ func _mud_features(img: Image, donor: Image, ox: int, oy: int, rng: Rng) -> void
 			Vector2i(x, y), Vector2i(x + 1, y), Vector2i(x + 2, y),
 			Vector2i(x + rng.range_i(0, 1), y + 1), Vector2i(x + 1 + rng.range_i(0, 1), y + 1),
 		]
-		var _ok := _stamp(img, donor, pts, Color("313638"))
+		var _ok := _stamp(img, donor, pts, Color("7a3045"))
 	if rng.chance(0.5):
 		for i: int in rng.range_i(1, 2):
 			var p := Vector2i(ox + rng.range_i(1, 14), oy + rng.range_i(1, 14))
