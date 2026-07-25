@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jersey+10&family=Tiny5&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#2e222f}
+a{color:#8fd3ff}a:hover{color:#c7dcd0}
+img{image-rendering:pixelated}
+</style>
+</helmet>
+<div style="min-height:100vh;background:#2e222f;padding:48px 40px 96px;display:flex;flex-direction:column;align-items:center;gap:48px;font-family:'IBM Plex Mono',monospace">
+
+  <!-- ============ DOC HEADER ============ -->
+  <div style="width:1360px;display:flex;flex-direction:column;gap:16px">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px">
+      <div>
+        <div style="font-family:'Tiny5';font-size:18px;color:#9babb2;letter-spacing:3px">HOW YOU DIED &middot; UI EXPLORATION &middot; SPEC SHEETS 01&ndash;04</div>
+        <div style="font-family:'Jersey 10';font-size:72px;line-height:1;color:#c7dcd0;margin-top:8px">THE PAINTER'S PALETTE</div>
+      </div>
+      <div style="font-size:12px;color:#9babb2;text-align:right;line-height:1.7">palette: Resurrect 64 &middot; grid: integer only<br>HUD scale 2&times; native &middot; all specimens shown at 2&times;<br>hand to: pixel artist + implementing engineer</div>
+    </div>
+    <div style="display:flex;height:8px">
+      <div style="flex:1;background:#ab947a"></div><div style="flex:1;background:#966c6c"></div><div style="flex:1;background:#694f62"></div><div style="flex:1;background:#625565"></div><div style="flex:1;background:#3e3546"></div><div style="flex:1;background:#c7dcd0"></div><div style="flex:1;background:#9babb2"></div><div style="flex:1;background:#f9c22b"></div><div style="flex:1;background:#fbb954"></div><div style="flex:1;background:#4d9be6"></div><div style="flex:1;background:#8fd3ff"></div><div style="flex:1;background:#e83b3b"></div><div style="flex:1;background:#1ebc73"></div>
+    </div>
+  </div>
+
+  <!-- ============ SHEET 01 — FOUNDATIONS ============ -->
+  <div style="width:1360px;background:#3e3546;border:2px solid #625565;padding:36px 40px 44px;box-sizing:border-box;display:flex;flex-direction:column;gap:32px">
+    <div style="display:flex;align-items:baseline;gap:20px;border-bottom:2px solid #625565;padding-bottom:14px">
+      <span style="font-family:'Jersey 10';font-size:44px;color:#f9c22b">01</span>
+      <span style="font-family:'Jersey 10';font-size:36px;color:#c7dcd0">FOUNDATIONS</span>
+      <span style="font-size:12px;color:#9babb2;margin-left:auto">the system every future panel is built from</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px">
+      <!-- color roles -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font-family:'Tiny5';font-size:16px;color:#9babb2;letter-spacing:2px">COLOR ROLES &mdash; WHICH OF THE 64 MEAN WHAT</div>
+        <sc-for list="{{ colorRoles }}" as="c" hint-placeholder-count="12">
+          <div style="display:flex;align-items:center;gap:12px;font-size:12px">
+            <div style="width:28px;height:28px;flex:none;background:{{ c.hex }};border:2px solid #2e222f"></div>
+            <span style="width:78px;flex:none;color:#c7dcd0">{{ c.hex }}</span>
+            <span style="width:150px;flex:none;color:#f9c22b;font-family:'Tiny5';font-size:15px;letter-spacing:1px">{{ c.name }}</span>
+            <span style="color:#9babb2">{{ c.use }}</span>
+          </div>
+        </sc-for>
+        <div style="font-size:12px;color:#9babb2;border-left:3px solid #4d9be6;padding-left:12px;margin-top:6px;line-height:1.7"><b style="color:#8fd3ff">Reserved:</b> the two ghost blues never appear in chrome. Blue on screen always means "blueprint / preview" &mdash; nothing else may claim it.</div>
+      </div>
+
+      <!-- 9-slice -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font-family:'Tiny5';font-size:16px;color:#9babb2;letter-spacing:2px">THE BOARD &mdash; 9-SLICE PANEL, 24&times;24 MASTER / 8PX CORNERS</div>
+        <div style="display:flex;gap:24px;align-items:flex-start">
+          <div style="position:relative;width:192px;height:192px;flex:none">
+            <img src="assets/board-tile.png" width="192" height="192" alt="9-slice master tile">
+            <div style="position:absolute;inset:0;background:linear-gradient(#0000 62px,#e83b3b 62px,#e83b3b 64px,#0000 64px,#0000 128px,#e83b3b 128px,#e83b3b 130px,#0000 130px),linear-gradient(90deg,#0000 62px,#e83b3b 62px,#e83b3b 64px,#0000 64px,#0000 128px,#e83b3b 128px,#e83b3b 130px,#0000 130px);opacity:.8"></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <img src="assets/board-demo-a.png" width="192" height="96" alt="stretched panel">
+            <img src="assets/board-demo-b.png" width="96" height="192" alt="tall panel">
+          </div>
+        </div>
+        <div style="font-size:12px;color:#9babb2;line-height:1.8">Anatomy, outside-in: <b style="color:#c7dcd0">1px #2e222f outline</b> &rarr; <b style="color:#c7dcd0">1px #c7dcd0 sheen</b> on the top edge only (light from above) &rarr; <b style="color:#c7dcd0">#ab947a face</b> with sparse #966c6c grain dashes and #694f62 knots &rarr; <b style="color:#c7dcd0">2&times;2 nail</b> (#694f62 + one #c7dcd0 glint) 3px into each corner. Edge nicks (1&ndash;2px bites out of the outline) sell "weathered"; keep &le;1 per 22px of edge. Center tile repeats, never stretches &mdash; grain must not smear. <b style="color:#c7dcd0">Sanded-field rule:</b> on any board that carries text, grain stays within ~8px of the edges; the field behind text is plain #ab947a. Texture frames the words, never sits under them.</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:40px;border-top:2px solid #625565;padding-top:28px">
+      <!-- button anatomy -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font-family:'Tiny5';font-size:16px;color:#9babb2;letter-spacing:2px">BUTTON ANATOMY &mdash; EVERYTHING IS A SLOT</div>
+        <div style="display:flex;gap:20px;align-items:center">
+          <img src="assets/sw-marble.png" width="144" height="144" alt="slot blowup">
+          <div style="font-size:12px;color:#9babb2;line-height:1.9">36&times;36 native:<br><b style="color:#c7dcd0">1px</b> ink outline<br><b style="color:#c7dcd0">1px</b> state frame<br><b style="color:#c7dcd0">32px</b> content (icon or material chip)<br><br>Selection <i>grows</i> the slot to 40&times;40 (3px gold frame + #fbb954 inner ring), overhanging its neighbors &mdash; the loaded brush physically lifts off the board.</div>
+        </div>
+      </div>
+      <!-- states -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font-family:'Tiny5';font-size:16px;color:#9babb2;letter-spacing:2px">STATES</div>
+        <div style="display:flex;gap:14px;align-items:center">
+          <div style="text-align:center"><img src="assets/sw-marble.png" width="72" height="72" alt="normal"><div style="font-size:11px;color:#9babb2;margin-top:6px">normal<br>#ab947a</div></div>
+          <div style="text-align:center"><img src="assets/sw-marble-hover.png" width="72" height="72" alt="hover"><div style="font-size:11px;color:#9babb2;margin-top:6px">hover<br>#c7dcd0</div></div>
+          <div style="text-align:center;margin-top:-8px"><img src="assets/sw-wood-sel.png" width="80" height="80" alt="selected"><div style="font-size:11px;color:#f9c22b;margin-top:2px">selected<br>#f9c22b, 40px</div></div>
+          <div style="text-align:center"><img src="assets/sw-granite-dis.png" width="72" height="72" alt="disabled"><div style="font-size:11px;color:#9babb2;margin-top:6px">disabled<br>50% ink dither</div></div>
+          <div style="text-align:center"><img src="assets/sw-empty.png" width="72" height="72" alt="empty"><div style="font-size:11px;color:#9babb2;margin-top:6px">empty<br>#625565</div></div>
+        </div>
+        <div style="font-size:12px;color:#9babb2;line-height:1.8">Disabled = material unavailable (no stock): chip stays visible under a 50% #2e222f checker dither &mdash; you can still see <i>what</i> you lack. Same five states apply to tools, tabs, and every future button.</div>
+      </div>
+      <!-- type + spacing -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font-family:'Tiny5';font-size:16px;color:#9babb2;letter-spacing:2px">TYPE &amp; SPACING</div>
+        <div style="font-size:12px;color:#9babb2;line-height:1.9">Font: <b style="color:#c7dcd0">m6x11</b> (Daniel Linssen, free license) &mdash; 6&times;11 body with true lowercase, plus <b style="color:#c7dcd0">m6x11plus</b> for headings. Scale: body 1&times; native (22 screen px at 2&times; HUD), headings 2&times;, keybind digits 1&times;. <b style="color:#c7dcd0">Rule:</b> text over the world always gets a 1px #2e222f outline; text on a board never does. <i style="color:#625565">(Sheets use Jersey&nbsp;10 / Tiny5 as web stand-ins.)</i></div>
+        <sc-for list="{{ spacing }}" as="s" hint-placeholder-count="5">
+          <div style="display:flex;gap:12px;font-size:12px;border-top:1px solid #625565;padding-top:6px">
+            <span style="width:120px;flex:none;color:#c7dcd0">{{ s.k }}</span><span style="width:90px;flex:none;color:#f9c22b;font-family:'Tiny5';font-size:15px">{{ s.v }}</span><span style="color:#9babb2">{{ s.n }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SHEET 02 — THE PALETTE BAR ============ -->
+  <div style="width:1360px;background:#3e3546;border:2px solid #625565;padding:36px 40px 44px;box-sizing:border-box;display:flex;flex-direction:column;gap:32px">
+    <div style="display:flex;align-items:baseline;gap:20px;border-bottom:2px solid #625565;padding-bottom:14px">
+      <span style="font-family:'Jersey 10';font-size:44px;color:#f9c22b">02</span>
+      <span style="font-family:'Jersey 10';font-size:36px;color:#c7dcd0">THE PALETTE BAR</span>
+      <span style="font-size:12px;color:#9babb2;margin-left:auto">bottom-center &middot; one board &middot; tools left, paint right</span>
+    </div>
+
+    <!-- assembled bar -->
+    <div style="display:flex;flex-direction:column;gap:18px;align-items:center">
+      <div style="position:relative;width:968px;height:116px;flex:none">
+        <img src="assets/tab-sel.png" width="104" height="28" style="position:absolute;left:324px;top:2px" alt="tab walls">
+        <img src="assets/tab-nrm.png" width="104" height="28" style="position:absolute;left:432px;top:6px" alt="tab furniture">
+        <img src="assets/tab-nrm.png" width="104" height="28" style="position:absolute;left:540px;top:6px" alt="tab floors">
+        <span style="position:absolute;left:324px;top:6px;width:104px;text-align:center;font-family:'Tiny5';font-size:14px;color:#2e222f">WALLS</span>
+        <span style="position:absolute;left:432px;top:10px;width:104px;text-align:center;font-family:'Tiny5';font-size:14px;color:#c7dcd0">FURNITURE</span>
+        <span style="position:absolute;left:540px;top:10px;width:104px;text-align:center;font-family:'Tiny5';font-size:14px;color:#c7dcd0">FLOORS</span>
+        <img src="assets/bar-backplate.png" width="968" height="88" style="position:absolute;left:0;top:28px" alt="palette bar board">
+        <img src="assets/tb-trowel-sel.png" width="80" height="80" style="position:absolute;left:4px;top:32px" alt="trowel selected">
+        <img src="assets/tb-pattern.png" width="72" height="72" style="position:absolute;left:84px;top:36px" alt="pattern brush">
+        <img src="assets/tb-eyedropper.png" width="72" height="72" style="position:absolute;left:160px;top:36px" alt="eyedropper">
+        <img src="assets/tb-cancel.png" width="72" height="72" style="position:absolute;left:236px;top:36px" alt="cancel">
+        <img src="assets/sw-wood-sel.png" width="80" height="80" style="position:absolute;left:320px;top:32px" alt="wood selected">
+        <img src="assets/sw-marble.png" width="72" height="72" style="position:absolute;left:400px;top:36px" alt="marble">
+        <img src="assets/sw-granite-dis.png" width="72" height="72" style="position:absolute;left:476px;top:36px" alt="granite disabled">
+        <img src="assets/sw-door.png" width="72" height="72" style="position:absolute;left:552px;top:36px" alt="door">
+        <img src="assets/sw-bed.png" width="72" height="72" style="position:absolute;left:628px;top:36px" alt="bed">
+        <img src="assets/sw-empty.png" width="72" height="72" style="position:absolute;left:704px;top:36px" alt="empty">
+        <img src="assets/sw-empty.png" width="72" height="72" style="position:absolute;left:780px;top:36px" alt="empty">
+        <img src="assets/sw-empty.png" width="72" height="72" style="position:absolute;left:856px;top:36px" alt="empty">
+        <sc-if value="{{ keybinds }}" hint-placeholder-val="{{ true }}">
+          <span style="position:absolute;left:4px;top:88px;width:80px;text-align:center;font-family:'Tiny5';font-size:16px;color:#ffffff;text-shadow:2px 0 #2e222f,-2px 0 #2e222f,0 2px #2e222f,0 -2px #2e222f">B</span>
+          <span style="position:absolute;left:84px;top:88px;width:72px;text-align:center;font-family:'Tiny5';font-size:16px;color:#ffffff;text-shadow:2px 0 #2e222f,-2px 0 #2e222f,0 2px #2e222f,0 -2px #2e222f">P</span>
+          <span style="position:absolute;left:160px;top:88px;width:72px;text-align:center;font-family:'Tiny5';font-size:16px;color:#ffffff;text-shadow:2px 0 #2e222f,-2px 0 #2e222f,0 2px #2e222f,0 -2px #2e222f">I</span>
+          <span style="position:absolute;left:236px;top:88px;width:72px;text-align:center;font-family:'Tiny5';font-size:16px;color:#ffffff;text-shadow:2px 0 #2e222f,-2px 0 #2e222f,0 2px #2e222f,0 -2px #2e222f">X</span>
+          <span style="position:absolute;left:320px;top:88px;width:80px;text-align:center;font-family:'Tiny5';font-size:16px;color:#f9c22b;text-shadow:2px 0 #2e222f,-2px 0 #2e222f,0 2px #2e222f,0 -2px #2e222f">1</span>
+          <span style="position:absolute;left:400px;top:88px;width:72px;text-align:center;font-family:'Tiny5';font-size:16px;color:#ffffff;text-shadow:2px 0 #2e222f,-2px 0 #2e222f,0 2px #2e222f,0 -2px #2e222f">2</span>
+          <span style="position:absolute;left:476px;top:88px;width:72px;text-align:center;font-family:'Tiny5';font-size:16px;color:#ffffff;text-shadow:2px 0 #2e222f,-2px 0 #2e222f,0 2px #2e222f,0 -2px #2e222f">3</span>
+          <span style="position:absolute;left:552px;top:88px;width:72px;text-align:center;font-family:'Tiny5';font-size:16px;color:#ffffff;text-shadow:2px 0 #2e222f,-2px 0 #2e222f,0 2px #2e222f,0 -2px #2e222f">4</span>
+          <span style="position:absolute;left:628px;top:88px;width:72px;text-align:center;font-family:'Tiny5';font-size:16px;color:#ffffff;text-shadow:2px 0 #2e222f,-2px 0 #2e222f,0 2px #2e222f,0 -2px #2e222f">5</span>
+        </sc-if>
+      </div>
+      <div style="display:flex;gap:28px;flex-wrap:wrap;justify-content:center;font-size:12px;color:#9babb2;max-width:1100px">
+        <span><b style="color:#f9c22b">&#9679;</b> Keybind digits hang <i>below</i> the board edge, outlined &mdash; readable over any terrain, never crowding the art.</span>
+        <span><b style="color:#f9c22b">&#9679;</b> Swatches show real material art, 32px chips cropped from the wall sheets &mdash; matter, not hex codes.</span>
+        <span><b style="color:#f9c22b">&#9679;</b> Groove + sheen line splits tools from paint; 3 stacked dots at far right = shelf position.</span>
+      </div>
+    </div>
+
+    <!-- in context -->
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:36px;border-top:2px solid #625565;padding-top:28px">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font-family:'Tiny5';font-size:16px;color:#9babb2;letter-spacing:2px">IN CONTEXT &mdash; 1296&times;720 SHOWN AT HALF</div>
+        <div style="position:relative;width:648px;height:360px;overflow:hidden;border:2px solid #2e222f">
+          <img src="assets/scene.png" width="648" height="360" style="display:block" alt="world scene">
+          <div style="position:absolute;left:50%;bottom:6px;transform:translateX(-50%) scale(.5);transform-origin:bottom center;width:968px;height:116px">
+            <img src="assets/bar-backplate.png" width="968" height="88" style="position:absolute;left:0;top:28px" alt="">
+            <img src="assets/tb-trowel-sel.png" width="80" height="80" style="position:absolute;left:4px;top:32px" alt="">
+            <img src="assets/tb-pattern.png" width="72" height="72" style="position:absolute;left:84px;top:36px" alt="">
+            <img src="assets/tb-eyedropper.png" width="72" height="72" style="position:absolute;left:160px;top:36px" alt="">
+            <img src="assets/tb-cancel.png" width="72" height="72" style="position:absolute;left:236px;top:36px" alt="">
+            <img src="assets/sw-wood-sel.png" width="80" height="80" style="position:absolute;left:320px;top:32px" alt="">
+            <img src="assets/sw-marble.png" width="72" height="72" style="position:absolute;left:400px;top:36px" alt="">
+            <img src="assets/sw-granite-dis.png" width="72" height="72" style="position:absolute;left:476px;top:36px" alt="">
+            <img src="assets/sw-door.png" width="72" height="72" style="position:absolute;left:552px;top:36px" alt="">
+            <img src="assets/sw-bed.png" width="72" height="72" style="position:absolute;left:628px;top:36px" alt="">
+            <img src="assets/sw-empty.png" width="72" height="72" style="position:absolute;left:704px;top:36px" alt="">
+            <img src="assets/sw-empty.png" width="72" height="72" style="position:absolute;left:780px;top:36px" alt="">
+            <img src="assets/sw-empty.png" width="72" height="72" style="position:absolute;left:856px;top:36px" alt="">
+          </div>
+          <div style="position:absolute;left:8px;top:8px;background:#2e222f;border:2px solid #3e3546;padding:4px 10px;font-family:'Tiny5';font-size:14px;color:#c7dcd0;letter-spacing:1px">SEED 8841F &middot; POP 6 &middot; SPEED &times;2</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:16px;font-size:12px;color:#9babb2;line-height:1.8;max-width:560px">
+        <div><b style="color:#c7dcd0;font-family:'Tiny5';font-size:15px;letter-spacing:1px">WHY BOTTOM-CENTER.</b> The strokes happen in the world; eyes live at screen center. Bottom-center keeps the palette in peripheral vision without occluding where you paint (you paint <i>upward</i> into the canvas, like a real palette held below the easel). Left/right docks were explored and rejected: vertical stacks break the 1&ndash;9 digit metaphor, and colony sims scroll horizontally more than art apps do.</div>
+        <div><b style="color:#c7dcd0;font-family:'Tiny5';font-size:15px;letter-spacing:1px">OVERFLOW = SHELVES.</b> One board never grows. Swatches group into data-driven category shelves (walls / furniture / floors&hellip; mods add more). Tabs sit on the board's top edge like paint-tin labels; <b style="color:#f9c22b">Tab</b> cycles shelves, digits <b style="color:#f9c22b">1&ndash;8</b> always address the visible shelf. Past ~6 shelves, tabs compress to icons + tooltip. A shelf holds max 8 &mdash; beyond that a category splits (walls I / walls II). No scrolling, no popups, nothing moves under a resting cursor.</div>
+        <div><b style="color:#c7dcd0;font-family:'Tiny5';font-size:15px;letter-spacing:1px">KEYBINDS.</b> <b style="color:#f9c22b">B</b> paint &middot; <b style="color:#f9c22b">P</b> pattern &middot; <b style="color:#f9c22b">I</b> eyedropper &middot; <b style="color:#f9c22b">X</b> cancel &middot; <b style="color:#f9c22b">1&ndash;8</b> swatches &middot; <b style="color:#f9c22b">Tab</b> shelf. Plus the art-app power move: <b style="color:#f9c22b">hold Alt</b> = temporary eyedropper while any tool is in hand; release and you're painting the picked material. Selecting a swatch while cancel is armed auto-swaps back to paint &mdash; picking up paint means you intend to paint.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SHEET 03 — INTERACTION ============ -->
+  <div style="width:1360px;background:#3e3546;border:2px solid #625565;padding:36px 40px 44px;box-sizing:border-box;display:flex;flex-direction:column;gap:32px">
+    <div style="display:flex;align-items:baseline;gap:20px;border-bottom:2px solid #625565;padding-bottom:14px">
+      <span style="font-family:'Jersey 10';font-size:44px;color:#f9c22b">03</span>
+      <span style="font-family:'Jersey 10';font-size:36px;color:#c7dcd0">CURSORS, STROKES &amp; MOTION</span>
+      <span style="font-size:12px;color:#9babb2;margin-left:auto">the tool in your hand IS the cursor</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px">
+      <!-- cursors -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font-family:'Tiny5';font-size:16px;color:#9babb2;letter-spacing:2px">CURSOR PER TOOL &mdash; GLYPH + LOADED CHIP</div>
+        <div style="display:flex;gap:18px">
+          <div style="background:#374e4a;border:2px solid #2e222f;padding:16px 12px 10px;text-align:center;flex:1">
+            <div style="position:relative;display:inline-block"><img src="assets/tool-trowel.png" width="64" height="64" alt="trowel cursor"><div style="position:absolute;right:-10px;bottom:-6px;border:2px solid #2e222f;line-height:0"><img src="assets/chip-wood.png" width="20" height="20" alt=""></div><div style="position:absolute;right:6px;top:6px;width:6px;height:2px;background:#e83b3b"></div><div style="position:absolute;right:8px;top:4px;width:2px;height:6px;background:#e83b3b"></div></div>
+            <div style="font-size:11px;color:#9babb2;margin-top:10px;line-height:1.6">trowel<br>hotspot (27,5) blade tip<br><b style="color:#c7dcd0">chip = loaded paint</b></div>
+          </div>
+          <div style="background:#374e4a;border:2px solid #2e222f;padding:16px 12px 10px;text-align:center;flex:1">
+            <div style="position:relative;display:inline-block"><img src="assets/tool-pattern.png" width="64" height="64" alt="pattern cursor"><div style="position:absolute;right:-10px;bottom:-6px;border:2px solid #2e222f;line-height:0"><img src="assets/chip-wood.png" width="20" height="20" alt=""></div></div>
+            <div style="font-size:11px;color:#9babb2;margin-top:10px;line-height:1.6">pattern brush<br>hotspot (26,6) bristles<br><b style="color:#c7dcd0">chip = pattern's material</b></div>
+          </div>
+          <div style="background:#374e4a;border:2px solid #2e222f;padding:16px 12px 10px;text-align:center;flex:1">
+            <div style="position:relative;display:inline-block"><img src="assets/tool-eyedropper.png" width="64" height="64" alt="eyedropper cursor"></div>
+            <div style="font-size:11px;color:#9babb2;margin-top:10px;line-height:1.6">eyedropper<br>hotspot (3,28) tip<br><b style="color:#c7dcd0">no chip &mdash; it's empty</b></div>
+          </div>
+          <div style="background:#374e4a;border:2px solid #2e222f;padding:16px 12px 10px;text-align:center;flex:1">
+            <div style="position:relative;display:inline-block"><img src="assets/tool-cancel.png" width="64" height="64" alt="cancel cursor"></div>
+            <div style="font-size:11px;color:#9babb2;margin-top:10px;line-height:1.6">cancel<br>hotspot (16,16) center<br><b style="color:#c7dcd0">hovered ghost tints red</b></div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:#9babb2;line-height:1.8">OS cursor hides over the canvas; the 32px glyph renders on the HUD layer at 2&times;, snapped to real pixels. The 10&times;10 material chip docks at the glyph's lower-right &mdash; one glance answers both "what tool" and "what paint". Over UI, the normal pointer returns. Cell under the hotspot gets a 1px #8fd3ff hover outline: what will happen on click, always visible.</div>
+      </div>
+
+      <!-- shift line + pattern -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font-family:'Tiny5';font-size:16px;color:#9babb2;letter-spacing:2px">SHIFT-LINE = CHALK LINE &middot; PATTERN BRUSH</div>
+        <div style="display:flex;gap:18px;align-items:flex-start">
+          <img src="assets/line-preview.png" width="264" height="120" alt="shift line preview" style="border:2px solid #2e222f">
+          <div style="font-size:12px;color:#9babb2;line-height:1.8;flex:1">Hold <b style="color:#f9c22b">Shift</b>: outline-only cells (#8fd3ff, 1px, no fill) snap a Bresenham line from the last painted cell to the cursor &mdash; taut string, nothing committed. White corner ticks mark both anchors. Click: the line fills into ghosts in one stroke-flow (see motion, below). No line tool, no mode &mdash; the pixel-editor convention, verbatim.</div>
+        </div>
+        <div style="display:flex;gap:18px;align-items:flex-start">
+          <img src="assets/pattern-demo.png" width="264" height="72" alt="pattern demo" style="border:2px solid #2e222f">
+          <div style="font-size:12px;color:#9babb2;line-height:1.8;flex:1">Pattern brush v1 ships <b style="color:#c7dcd0">one pattern: 1-on / 1-off</b> (fence posts). No picker UI &mdash; the pattern lives in the tool. Selecting the tool shows a 4-cell rhythm strip in its tooltip. When patterns multiply later, <b style="color:#f9c22b">re-tapping P</b> cycles them (same muscle memory as shelf-Tab); the cursor chip alternates chip/blank to show the rhythm.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- motion spec -->
+    <div style="display:flex;flex-direction:column;gap:12px;border-top:2px solid #625565;padding-top:28px">
+      <div style="font-family:'Tiny5';font-size:16px;color:#9babb2;letter-spacing:2px">MICRO-ANIMATION SPEC &mdash; WHICH ICON ROWS GET FRAMES</div>
+      <div style="display:flex;gap:12px;font-size:12px;color:#625565;font-family:'Tiny5';letter-spacing:1px;font-size:14px"><span style="width:190px;flex:none">ELEMENT</span><span style="width:90px;flex:none">FRAMES</span><span style="width:130px;flex:none">TIMING</span><span>BEHAVIOR</span></div>
+      <sc-for list="{{ motion }}" as="m" hint-placeholder-count="6">
+        <div style="display:flex;gap:12px;font-size:12px;border-top:1px solid #625565;padding-top:8px">
+          <span style="width:190px;flex:none;color:#c7dcd0">{{ m.el }}</span><span style="width:90px;flex:none;color:#f9c22b">{{ m.frames }}</span><span style="width:130px;flex:none;color:#9babb2">{{ m.timing }}</span><span style="color:#9babb2">{{ m.what }}</span>
+        </div>
+      </sc-for>
+      <div style="font-size:12px;color:#9babb2;border-left:3px solid #f9c22b;padding-left:12px;margin-top:6px;line-height:1.7"><b style="color:#f9c22b">The one rule:</b> idle UI is perfectly still. Motion only ever <i>acknowledges the player's hand</i> &mdash; a select, a pick, a stroke. Nothing wiggles to be noticed. All animation steps whole frames (steps(1)); no tweening, ever.</div>
+    </div>
+  </div>
+
+  <!-- ============ SHEET 04 — SECONDARY SURFACES ============ -->
+  <div style="width:1360px;background:#3e3546;border:2px solid #625565;padding:36px 40px 44px;box-sizing:border-box;display:flex;flex-direction:column;gap:32px">
+    <div style="display:flex;align-items:baseline;gap:20px;border-bottom:2px solid #625565;padding-bottom:14px">
+      <span style="font-family:'Jersey 10';font-size:44px;color:#f9c22b">04</span>
+      <span style="font-family:'Jersey 10';font-size:36px;color:#c7dcd0">PROOF: THE FOUNDATIONS GENERALIZE</span>
+      <span style="font-size:12px;color:#9babb2;margin-left:auto">one sketch each &mdash; not finished designs</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:40px;align-items:start">
+      <!-- tooltip -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font-family:'Tiny5';font-size:16px;color:#9babb2;letter-spacing:2px">TOOLTIP + KEYBIND HINT</div>
+        <div style="position:relative;width:300px;height:80px">
+          <img src="assets/board-tooltip.png" width="300" height="80" alt="tooltip board">
+          <div style="position:absolute;left:20px;top:10px;font-family:'Jersey 10';font-size:26px;color:#2e222f;line-height:1">GRANITE WALL</div>
+          <div style="position:absolute;left:20px;top:38px;font-family:'Tiny5';font-size:15px;color:#694f62">[3] &middot; 4&times; GRANITE BLOCK &middot; NO STOCK</div>
+        </div>
+        <div style="font-size:12px;color:#9babb2;line-height:1.8">Small board, stepped notch toward its anchor, sanded field (grain at edges only) so ink type stays crisp. Name in heading type (ink on board), second line: keybind in brackets, cost, and the disable reason when dithered. Appears after 300ms hover, instantly during keyboard focus. Never follows the mouse.</div>
+      </div>
+      <!-- pawn card -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font-family:'Tiny5';font-size:16px;color:#9babb2;letter-spacing:2px">PAWN INSPECTION CARD</div>
+        <div style="position:relative;width:340px;height:260px">
+          <img src="assets/board-card.png" width="340" height="260" alt="pawn card board">
+          <div style="position:absolute;left:24px;top:14px;font-family:'Jersey 10';font-size:30px;color:#2e222f;line-height:1">MARA VOSS</div>
+          <div style="position:absolute;left:24px;top:46px;font-family:'Tiny5';font-size:15px;color:#694f62">HAULING MARBLE &rarr; STOCKPILE</div>
+          <div style="position:absolute;left:24px;top:66px;font-family:'Tiny5';font-size:14px;color:#966c6c">(CLOSEST HAUL JOB &middot; NOTHING URGENT)</div>
+          <div style="position:absolute;left:24px;top:100px;width:292px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:center;gap:10px"><span style="width:52px;font-family:'Tiny5';font-size:15px;color:#2e222f">FOOD</span><div style="flex:1;height:14px;border:2px solid #2e222f;background:#625565;position:relative"><div style="position:absolute;left:0;top:0;bottom:0;width:62%;background:repeating-linear-gradient(90deg,#1ebc73 0,#1ebc73 12px,#239063 12px,#239063 14px)"></div></div><span style="width:32px;font-family:'Tiny5';font-size:15px;color:#2e222f;text-align:right">62</span></div>
+            <div style="display:flex;align-items:center;gap:10px"><span style="width:52px;font-family:'Tiny5';font-size:15px;color:#2e222f">REST</span><div style="flex:1;height:14px;border:2px solid #2e222f;background:#625565;position:relative"><div style="position:absolute;left:0;top:0;bottom:0;width:34%;background:repeating-linear-gradient(90deg,#f9c22b 0,#f9c22b 12px,#fbb954 12px,#fbb954 14px)"></div></div><span style="width:32px;font-family:'Tiny5';font-size:15px;color:#2e222f;text-align:right">34</span></div>
+            <div style="display:flex;align-items:center;gap:10px"><span style="width:52px;font-family:'Tiny5';font-size:15px;color:#2e222f">MOOD</span><div style="flex:1;height:14px;border:2px solid #2e222f;background:#625565;position:relative"><div style="position:absolute;left:0;top:0;bottom:0;width:71%;background:repeating-linear-gradient(90deg,#1ebc73 0,#1ebc73 12px,#239063 12px,#239063 14px)"></div></div><span style="width:32px;font-family:'Tiny5';font-size:15px;color:#2e222f;text-align:right">71</span></div>
+          </div>
+          <div style="position:absolute;left:24px;bottom:16px;font-family:'Tiny5';font-size:14px;color:#966c6c">CLICK PAWN AGAIN TO FOLLOW &middot; [ESC] CLOSE</div>
+        </div>
+        <div style="font-size:12px;color:#9babb2;line-height:1.8">Same board, same slot logic. Need bars: 2px ink outline, #625565 track, fill in role colors (green / gold / red at &lt;25%), 12px chunks with a darker tick &mdash; readable at a glance, counts like a supply gauge. Action line + reasoning in parentheses: the story surface, always current.</div>
+      </div>
+      <!-- HUD line -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font-family:'Tiny5';font-size:16px;color:#9babb2;letter-spacing:2px">HUD STATUS LINE</div>
+        <div style="display:inline-flex;align-self:flex-start;background:#2e222f;border:2px solid #3e3546;padding:8px 16px;gap:18px;font-family:'Tiny5';font-size:17px;color:#c7dcd0;letter-spacing:1px">
+          <span>SEED 8841F</span><span style="color:#625565">&middot;</span><span>POP 6</span><span style="color:#625565">&middot;</span><span style="color:#f9c22b">SPEED &times;2</span><span style="color:#625565">&middot;</span><span>48 PX/TILE</span>
+        </div>
+        <div style="font-size:12px;color:#9babb2;line-height:1.8">Deliberately <i>not</i> a board: ambient sim data is ink-on-shadow (#2e222f plate, #3e3546 hairline), quiet against the world. Boards are for things you touch; plates are for things you read. Gold marks the one live-changing value. Top-left, fixed.</div>
+        <div style="font-size:12px;color:#9babb2;border-left:3px solid #625565;padding-left:12px;line-height:1.7;margin-top:8px"><b style="color:#c7dcd0">Out of scope, by design:</b> menus, alerts, settings, storyteller UI. When they arrive they inherit: boards for touchable, plates for readable, slots for clickable, gold for selected, blue for ghosts, red for warnings.</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="width:1360px;display:flex;justify-content:space-between;font-size:12px;color:#625565">
+    <span>How You Died &mdash; palette exploration &middot; sheets 01&ndash;04 &middot; all pixel specimens generated at native res, shown 2&times;</span>
+    <span>fewer clicks &middot; chunkier pixels &middot; more paint</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;keybinds&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Palette bar&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      keybinds: this.props.keybinds ?? true,
+      colorRoles: [
+        {hex:'#2e222f', name:'INK', use:'every outline, text on boards'},
+        {hex:'#ab947a', name:'BOARD FACE', use:'panel chrome, button frames'},
+        {hex:'#966c6c', name:'BOARD SHADE', use:'grain, bottom/right bevel'},
+        {hex:'#694f62', name:'DEEP GRAIN', use:'knots, nails, tertiary text on board'},
+        {hex:'#625565', name:'RECESS', use:'empty slots, disabled frames, bar tracks'},
+        {hex:'#3e3546', name:'SHADOW PLATE', use:'HUD plates, recessed backgrounds'},
+        {hex:'#c7dcd0', name:'SHEEN', use:'highlights, hover frames, text on dark'},
+        {hex:'#9babb2', name:'MIST', use:'secondary text on dark'},
+        {hex:'#f9c22b', name:'SELECTED', use:'active frames, live values, keybind accents'},
+        {hex:'#fbb954', name:'SELECTED INNER', use:'inner ring of selected slots'},
+        {hex:'#4d9be6', name:'GHOST', use:'blueprint tint (reserved)'},
+        {hex:'#8fd3ff', name:'GHOST LIGHT', use:'previews, hover cell outline (reserved)'},
+        {hex:'#e83b3b', name:'WARNING', use:'cancel-hover tint, danger text'},
+        {hex:'#1ebc73', name:'CONFIRM', use:'healthy need bars, success ticks'}
+      ],
+      spacing: [
+        {k:'base unit', v:'2 px', n:'native; everything is a multiple'},
+        {k:'icon / chip', v:'32 px', n:'matches icons.png cell'},
+        {k:'slot', v:'36 px', n:'32 + 1 frame + 1 outline per side'},
+        {k:'slot gap', v:'2 px', n:'selected slot (40px) eats the gap'},
+        {k:'board padding', v:'4 px', n:'slot to board edge'},
+        {k:'panel corner', v:'8 px', n:'9-slice corner cut'}
+      ],
+      motion: [
+        {el:'swatch / tool select', frames:'2', timing:'125ms, 4 steps', what:'gold frame flashes #fbb954→#f9c22b as the slot grows 36→40 — the "brush loads" thock'},
+        {el:'eyedropper pick', frames:'4', timing:'300ms one-shot', what:'bulb fills with the picked material color, bottom-up; then the target swatch plays its select flash'},
+        {el:'trowel stroke', frames:'2', timing:'per cell painted', what:'blade dips 1px toward the canvas each cell a drag commits — paint flowing off the brush'},
+        {el:'cancel armed', frames:'2', timing:'800ms loop', what:'slash pulses #e83b3b while the tool is in hand — the only looping motion, because it is destructive'},
+        {el:'ghost cell birth', frames:'3', timing:'150ms one-shot', what:'cell pops in 1px oversized then settles; on shift-line commit, cells cascade from anchor at 20ms intervals — the chalk snap'},
+        {el:'shelf change', frames:'—', timing:'100ms, 2 steps', what:'outgoing swatches drop 2px as incoming drop in from the tab edge; whole-pixel steps only'}
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
