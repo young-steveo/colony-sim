@@ -120,6 +120,36 @@ around them is wide open:
    floating glass SaaS toolbar. (Post-apocalyptic, but scrappy-hopeful,
    not grimdark.)
 
+## Scope: foundations + one flagship component
+
+The palette is the first real UI this game will have, which means it will
+*implicitly* define the design system whether anyone intends it or not.
+So make it explicit. This engagement is two layers:
+
+1. **Foundations** — the reusable system the palette instantiates:
+   - Color roles drawn from Resurrect-64 (panel/chrome, text, selected,
+     hover, disabled, warning — which of the 64 mean what).
+   - The 9-slice panel language (this is *the* window/container style
+     for the whole game — weathered, handmade, scrappy-hopeful).
+   - Button anatomy and states (a swatch is a button; so is a tool; so
+     will be everything else, forever).
+   - A pixel font recommendation and type scale (sizes, when to outline).
+   - Spacing rhythm on the pixel grid (what's the base unit — 4px? 8px?).
+   - Tooltip / keybind-hint treatment.
+2. **The palette bar** — the flagship component, designed with the
+   deliverables below, built *from* those foundations.
+
+Three secondary surfaces already exist in-game as raw debug text; sketch
+each once, only to prove the foundations generalize — not as finished
+designs: the **HUD status line** (seed, pawn count, speed, zoom), the
+**pawn inspection card** (name, need bars, current action + reasoning),
+and a **tooltip**.
+
+Explicitly out of scope: menus, settings, alerts/notifications, title
+screen, storyteller UI. Those consumers don't exist yet; designing for
+imagined requirements produces speculative work. The foundations you
+define here are what they'll be built from later.
+
 ## Deliverables wanted from this exploration
 
 - Layout and placement of the palette bar (position, orientation, swatch
