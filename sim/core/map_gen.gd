@@ -70,34 +70,84 @@ static func generate(world_seed: int, width: int, height: int) -> Dictionary:
 
 	var substrate := PackedByteArray()
 	var surface := PackedByteArray()
+	var wetness := PackedFloat32Array()
 	var _e4: int = substrate.resize(cell_count)
 	var _e5: int = surface.resize(cell_count)
+	var _e6: int = wetness.resize(cell_count)
+	var jitter_key := SimRng.key([world_seed, "wetness_jitter"])
 	for c: int in cell_count:
 		var e := elevation[c]
+		# Per-cell jitter breaks threshold isolines: without it, mud forms
+		# a mathematically uniform one-cell crust along every wet shore —
+		# an outline stroke, not a material. With it, banks come in
+		# organic patches (the gentle pass below sweeps the crumbs).
+		var jitter := (SimRng.randf(SimRng.combine(jitter_key, c)) - 0.5) * 0.12
+		var proximity := clampf(1.0 - float(dist[c]) / WATER_REACH, 0.0, 1.0)
+		wetness[c] = 0.6 * rainfall[c] + 0.4 * proximity + jitter
 		if e < THRESHOLD_WATER:
 			substrate[c] = SimWorld.TILE_WATER
 			continue
 		var soil := soil_noise[c] * (1.0 - 0.6 * e)  # thin up high
-		var proximity := clampf(1.0 - float(dist[c]) / WATER_REACH, 0.0, 1.0)
-		var wetness := 0.6 * rainfall[c] + 0.4 * proximity
 		if e >= THRESHOLD_PEAK or soil < SOIL_BARE:
 			substrate[c] = SimWorld.TILE_STONE
-		elif dist[c] <= SAND_SHORE_DIST and wetness < WET_SAND_MAX:
+		elif dist[c] <= SAND_SHORE_DIST and wetness[c] < WET_SAND_MAX:
 			substrate[c] = SimWorld.TILE_SAND
-		elif wetness >= WET_MUD:
+		elif wetness[c] >= WET_MUD:
 			substrate[c] = SimWorld.TILE_MUD
-		elif soil >= SOIL_FERTILE and wetness >= WET_FERTILE:
+		elif soil >= SOIL_FERTILE and wetness[c] >= WET_FERTILE:
 			substrate[c] = SimWorld.TILE_DIRT_FERTILE
 		elif soil < SOIL_ROCKY:
 			substrate[c] = SimWorld.TILE_DIRT_ROCKY
 		else:
 			substrate[c] = SimWorld.TILE_DIRT
+
+	_defizz(substrate, width, height)
+
+	for c: int in cell_count:
 		# Grass grows on soil that holds some water — including fertile
 		# ground (its fringe then exposes fertile dirt: the seam rule).
 		var s := substrate[c]
-		if (s == SimWorld.TILE_DIRT or s == SimWorld.TILE_DIRT_FERTILE) and wetness >= WET_GRASS:
+		if (s == SimWorld.TILE_DIRT or s == SimWorld.TILE_DIRT_FERTILE) and wetness[c] >= WET_GRASS:
 			surface[c] = SimWorld.SURF_GRASS
 	return {"substrate": substrate, "surface": surface}
+
+
+## The gentle pass: a LAND cell with zero orthogonal same-substrate
+## neighbors takes the most common land substrate around it. Kills the
+## threshold-isoline dithering (diagonal staircases of island blobs)
+## while keeping every region, band, and deliberate-feeling lone tuft
+## that has even one friend. Water never changes — the coastline is
+## elevation truth. Deterministic: reads the pre-pass state only.
+static func _defizz(substrate: PackedByteArray, width: int, height: int) -> void:
+	var before := substrate.duplicate()
+	for y: int in range(1, height - 1):
+		for x: int in range(1, width - 1):
+			var c := y * width + x
+			var mine := before[c]
+			if mine == SimWorld.TILE_WATER:
+				continue
+			var lonely := true
+			for n: int in [c - width, c + width, c - 1, c + 1]:
+				if before[n] == mine:
+					lonely = false
+					break
+			if not lonely:
+				continue
+			var counts := {}
+			var best := mine
+			var best_n := 0
+			for dy: int in [-1, 0, 1]:
+				for dx: int in [-1, 0, 1]:
+					if dx == 0 and dy == 0:
+						continue
+					var nv := before[c + dy * width + dx]
+					if nv == SimWorld.TILE_WATER:
+						continue
+					counts[nv] = int(counts.get(nv, 0)) + 1
+					if counts[nv] > best_n:
+						best_n = counts[nv]
+						best = nv
+			substrate[c] = best
 
 
 ## Normalized [0,1] fractal value noise, lattice precomputed per octave.

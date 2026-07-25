@@ -108,8 +108,10 @@ func _rocky_features(img: Image, donor: Image, ox: int, oy: int, rng: Rng) -> vo
 			Vector2i(x, y), Vector2i(x + 1, y), Vector2i(x, y + 1), Vector2i(x + 1, y + 1),
 		]
 		if _stamp(img, donor, pts, Color("7f708a")):
+			# No sheen glint on pebbles: a lone cool bright pixel per pebble
+			# aggregates into blue confetti at play zoom (the navy-fleck
+			# lesson, round two). The pebble body is enough.
 			var _s := _stamp(img, donor, [Vector2i(x + 1, y + 1)], Color("625565"))
-			var _g := _stamp(img, donor, [Vector2i(x, y)], Color("9babb2"))
 
 ## Sand: flattest of all — a rare short horizontal ripple, base-shade.
 func _sand_features(img: Image, donor: Image, ox: int, oy: int, rng: Rng) -> void:
