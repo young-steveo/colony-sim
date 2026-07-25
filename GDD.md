@@ -314,6 +314,27 @@ cellular fluid simulation (DF's CPU sinkhole; the buffalo's teeth, liquid
 edition). Waterwheels check adjacency to flow (power, milling). Floods are
 events that raise water level over a region on a curve.
 
+### Soft ground & mud [direction]
+Mud is ground that *resists being claimed but can be won* — beyond
+RimWorld's static bridge-or-avoid marsh. Three hooks (July 2026 session):
+**anti-killbox terrain** — slow to cross, refuses construction, so the map
+dictates approach paths without designer-smelling rules; **telegraphed
+subsidence, never instant collapse** — structures on soft ground visibly
+lean/crack over weeks (inspectable, shore-up-able; a story, not a stat
+punishment — the Fun Principle test); **drainage as reclamation** —
+archaeology-gated terraforming (dig up the old world's clay pipes).
+Rides the tile-stack's identity/condition split: a bog is *identity*
+(mud substrate; drainage converts it, slowly and permanently), rain-slop
+on dirt is *condition* (wetness field spikes and dries; tint + move-cost
+respond). Known prerequisite, file it now: flow fields must go from
+binary walkable to **weighted per-cell cost** (Dijkstra, not BFS) the
+moment difficult terrain lands; actor slog = the GoTo step reading cost
+underfoot (activity machines make this cheap). Worldgen fields plan from
+the same session: primaries are elevation + rainfall + **soil depth**;
+wetness/fertility always *derived* (believability = consequences, not
+decrees); fertile dirt = deep + wet, rocky dirt = thin soil, mud = extreme
+wetness short of open water.
+
 ### Weather, seasons, temperature [committed]
 Cold snaps, heat waves, snow — RimWorld's quiet story engine, plus wasteland
 weirdness (toxic winds, ash storms) as threat-ecology members. Temperature
@@ -540,7 +561,25 @@ engineering-constitutional.
    scheduled.)
 5. **Scenario-proof systems.** No hardcoded assumptions a scenario might vary
    (party size, tech level, biome, morality).
-6. **Toolbox** (use when an idea needs it):
+6. **Activity machines under the brain** (July 2026). The utility brain owns
+   transitions *between* activities; an activity (the execution of an action)
+   is an explicit engine-side phase machine that owns transitions *within*
+   itself. Three exits only — DONE, FAILED, INTERRUPTED — and every exit path
+   (including preemption, rally, rescue) releases pawn-local state through a
+   single exit hook, so claims and timers never leak between activities.
+   **Activities never weigh alternatives**: a phase transition may read the
+   activity's own progress (the need it restores, the claim it holds), never
+   whether something else is worth doing — the moment a transition guard reads
+   needs, the brain has leaked into the body. Colony verbs are designed as
+   sequential steps with failure edges (RimWorld-toil-shaped), built from
+   shared step primitives (follow-field, move-to, wait); free-form state
+   graphs are reserved for the genuinely graph-shaped (combat, fleeing).
+   State lives in the pool as packed arrays (phase, phase_timer); machines
+   are code, no per-pawn objects, no allocation on activity start. Exists to
+   kill the "if state and mode and not flag and..." nesting rot before actor
+   detail accretes — new detail lands as a new phase or step, not a new
+   boolean.
+7. **Toolbox** (use when an idea needs it):
    - **Dijkstra maps / flow fields** — starred: one shared map serves hundreds
      of agents (performance multiplier) and composes with utility AI as
      weighted desire maps.
@@ -880,6 +919,22 @@ required for toxic winds via cheap "indoors"), substrate immutable in
 v1, furniture graduates to entities when identity matters (the
 anonymity seam). Terrain going data-driven is now unblocked — surface
 and substrate defs have a home.
+
+### Activity machines — execution layer decision (July 24, 2026)
+
+Stephen raised it, motivated by dread of "if state & mode & not flag"
+nesting rot as actor detail accretes. Settled fast because the code
+was already confessing: wander's pause went in as a `wander_wait > 0`
+sentinel, build's three phases hid in claim-validity checks, rally
+lived on a side flag. The distinction that mattered: state machines
+**under** the brain, never **as** the brain — utility keeps deciding
+*whether*, machines organize *how* (the RimWorld job/toil pairing).
+Promoted to Architecture Commitments (see "Activity machines under
+the brain") and implemented same-day: five executions converted to
+explicit phase machines with a single enter hook, single exit hook,
+DONE/FAILED/INTERRUPTED outcomes, phases visible in the inspection
+panel. No behavior change intended; step-primitive library deliberately
+deferred until hauling provides the third real consumer.
 
 ## 14. References
 
