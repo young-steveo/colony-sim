@@ -32,7 +32,7 @@ func _init() -> void:
 	_gen(donor, "dirt_rocky", Color("966c6c"), _rocky_features)
 	_gen(donor, "sand", Color("ab947a"), _sand_features)
 	_gen(donor, "mud", Color("9e4539"), _mud_features)
-	_gen(donor, "water", Color("0b5e65"), _water_features)
+	_gen_water(donor)
 	print("done")
 	quit()
 
@@ -126,13 +126,49 @@ func _sand_features(img: Image, donor: Image, ox: int, oy: int, rng: Rng) -> voi
 			pts.append(Vector2i(x + dx, y))
 		var _ok := _stamp(img, donor, pts, Color("966c6c"))
 
-## Water: short horizontal ripple ticks one ramp up (the shallows
+## Water rides the donor differently: the shore grammar is baked in.
+## Donor-opaque pixels become deep water; donor-transparent pixels
+## inside any used cell become opaque shallow fringe, so the land-side
+## reveal band continues across the seam and dies on the donor's
+## ragged silhouette instead of the straight cell boundary. Cells with
+## no donor art (template hole, unused variant slots) stay empty.
+func _gen_water(donor: Image) -> void:
+	var deep := Color("0b5e65")
+	var shallow := Color("0b8a8f")
+	var img := Image.create(donor.get_width(), donor.get_height(), false, Image.FORMAT_RGBA8)
+	for cy: int in ROWS:
+		for cx: int in COLS:
+			var used := false
+			for y: int in CELL:
+				for x: int in CELL:
+					if donor.get_pixel(cx * CELL + x, cy * CELL + y).a > 0.0:
+						used = true
+						break
+				if used:
+					break
+			if not used:
+				continue
+			for y: int in CELL:
+				for x: int in CELL:
+					var px := cx * CELL + x
+					var py := cy * CELL + y
+					img.set_pixel(px, py, deep if donor.get_pixel(px, py).a > 0.0 else shallow)
+			# Ripples only on interior + variant cells: every coast tile of
+			# a given mask is the same sheet cell, so a ripple there
+			# wallpapers down the whole shoreline. Shore water stays calm.
+			if cy == ROWS - 1 or cy * COLS + cx == Autotile.cell_for(255):
+				var rng := Rng.new(hash("water") ^ (cy * COLS + cx + 7777))
+				_water_features(img, donor, cx * CELL, cy * CELL, rng)
+	var _e := img.save_png(ProjectSettings.globalize_path("res://content/terrain/water.png"))
+	print("water")
+
+
+## Water ripples: short horizontal ticks one ramp up (the shallows
 ## color), ends stepped down a pixel so they read as waves, not
 ## scratches; rare darker trough beneath. Sparse — lakes are big and
 ## bright specks aggregate at play zoom (the navy-fleck lesson).
-## Only interior + variant cells ever render (water is blend 0, every
-## land material scallops over it), but the whole sheet gets features
-## so the completeness contract holds.
+## _stamp requires donor-opaque pixels, so ripples land on deep water
+## only — the shallow fringe stays calm.
 func _water_features(img: Image, donor: Image, ox: int, oy: int, rng: Rng) -> void:
 	if not rng.chance(0.75):
 		return

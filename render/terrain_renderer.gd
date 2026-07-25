@@ -44,10 +44,14 @@ func build(world: SimWorld, defs: TerrainDefs) -> void:
 		# Blend priority (content contract): at a seam only the HIGHER
 		# blend material scallops; the lower extends flat to the edge.
 		# Connected = same material, or any higher-blend neighbor.
+		# Exception: blend 0 (water) is the floor of the stack — land
+		# scallops over it AND it draws its own shore fringe (shallow
+		# baked into its edge cells), so it connects only to itself.
+		var floor_mat := defs.blend[mat] == 0
 		var lut := PackedByteArray()
 		var _e: int = lut.resize(defs.count())
 		for n: int in defs.count():
-			lut[n] = 1 if (n == mat or defs.blend[n] > defs.blend[mat]) else 0
+			lut[n] = 1 if (n == mat or (not floor_mat and defs.blend[n] > defs.blend[mat])) else 0
 		_build_overlay(world, defs.sheets[mat], world.tiles, mat, defs.ids[mat], lut)
 	for s: int in range(1, defs.surface_ids.size()):
 		if defs.surface_sheets[s] == "":
