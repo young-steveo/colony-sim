@@ -51,6 +51,7 @@ var hud: Label
 var _screenshot_mode := false
 var _warmup_ticks := 0
 var _rally_arg := ""
+var _cam_arg := ""
 var _frame := 0
 
 
@@ -71,6 +72,8 @@ func _ready() -> void:
 			_rally_arg = a.trim_prefix("--rally=")
 		elif a.begins_with("--warmup="):
 			_warmup_ticks = maxi(0, int(a.trim_prefix("--warmup=")))
+		elif a.begins_with("--cam="):
+			_cam_arg = a.trim_prefix("--cam=")
 
 	cam = Camera2D.new()
 	add_child(cam)
@@ -107,6 +110,9 @@ func _ready() -> void:
 	if "--inspect" in args and sim.actors.count > 0:
 		selected_id = sim.actors.ids[0]
 		_place_camera(sim.actors.positions[0] * TerrainRenderer.TILE_PX)
+	if _cam_arg.contains(","):
+		var cam_parts := _cam_arg.split(",")
+		_place_camera(Vector2(int(cam_parts[0]), int(cam_parts[1])) * TerrainRenderer.TILE_PX)
 
 
 func _start(seed_value: int) -> void:
