@@ -60,8 +60,13 @@ func _build_base(world: SimWorld, defs: TerrainDefs) -> void:
 			var c: Color
 			if surf != SimWorld.SURF_NONE and defs.surface_sheets[surf] == "":
 				c = defs.surface_colors[surf]  # sheetless surface flat-covers
+			elif surf != SimWorld.SURF_NONE:
+				# Sheeted surface: its fringe exposes the ground it grows ON,
+				# not the neighbor — grass thins to soil before soil meets
+				# anything else (Stephen's rule, July 2026).
+				c = defs.colors[mat]
 			elif defs.sheets[mat] != "":
-				c = _reveal_color(world, defs, x, y, mat)
+				c = defs.colors[_reveal_substrate(world, x, y, mat)]
 			else:
 				c = defs.colors[mat]
 			var k := SimRng.combine(SimRng.combine(shade_key, x), y)
@@ -71,23 +76,19 @@ func _build_base(world: SimWorld, defs: TerrainDefs) -> void:
 	add_child(base)
 
 
-## What shows through a sheeted substrate's transition notches: the first
-## different neighbor substrate in scan order — as the player SEES it. A
-## grass-covered dirt neighbor reveals grass olive, not the dirt hiding
-## under it; revealing the true substrate paints a phantom dirt rim
-## around every stone-meets-grass contour.
-func _reveal_color(world: SimWorld, defs: TerrainDefs, x: int, y: int, mat: int) -> Color:
+## What shows through a bare substrate's transition notches: the first
+## different neighbor SUBSTRATE in scan order. Substrates always yield to
+## substrates — at a grass-field boundary the grass has already thinned
+## to soil (see above), so stone meeting grassland correctly reveals the
+## dirt seam, and both sides of the contour tell one story: everything
+## gives way to the soil line, and the soil gives way to rock.
+func _reveal_substrate(world: SimWorld, x: int, y: int, mat: int) -> int:
 	for offset: Vector2i in NEIGHBOR_ORDER:
-		var cell := (
-			clampi(y + offset.y, 0, world.height - 1) * world.width
-			+ clampi(x + offset.x, 0, world.width - 1)
-		)
-		if world.tiles[cell] != mat:
-			var nsurf := world.surfaces[cell]
-			if nsurf != SimWorld.SURF_NONE:
-				return defs.surface_colors[nsurf]
-			return defs.colors[world.tiles[cell]]
-	return defs.colors[mat]
+		var n := world.tile_at(
+			clampi(x + offset.x, 0, world.width - 1), clampi(y + offset.y, 0, world.height - 1))
+		if n != mat:
+			return n
+	return mat
 
 
 ## One blob layer: `layer` is the byte array it reads (substrates or
