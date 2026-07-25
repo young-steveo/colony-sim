@@ -19,7 +19,9 @@ var world_seed := 0
 var sim_paused := false
 var speed_idx := 0
 var default_zoom_idx := DEFAULT_ZOOM_IDX
-var start_actors := 100
+# Slice default: a readable handful at the map's heart, not a stress crowd
+# (F still piles on +100 for the stress test).
+var start_actors := 4
 var zoom_idx := DEFAULT_ZOOM_IDX
 var _cam_pos := Vector2.ZERO  # continuous pan position; cam snaps to pixels
 var accumulator := 0.0
@@ -128,7 +130,7 @@ func _start(seed_value: int) -> void:
 	build_tool_idx = 0
 	terrain = TerrainRenderer.new()
 	add_child(terrain)
-	terrain.build(sim.world)
+	terrain.build(sim.world, sim.terrain_defs)
 	bush_renderer = BushRenderer.new()
 	add_child(bush_renderer)
 	bush_renderer.setup(sim.world, sim.bushes)
@@ -399,8 +401,10 @@ func _update_selection() -> void:
 			if k != a:
 				scores.append("%s %.2f" % [sim.defs.actions[k].id, pool.last_scores[idx * sim.defs.actions.size() + k]])
 		if a >= 0:
-			lines.append("action: %s (%.2f)" % [
+			var phase_text := pool.phase_label(sim.defs, idx)
+			lines.append("action: %s%s (%.2f)" % [
 				sim.defs.actions[a].id,
+				":" + phase_text if not phase_text.is_empty() else "",
 				pool.last_scores[idx * sim.defs.actions.size() + a],
 			])
 		lines.append("also considered: %s" % ", ".join(scores))

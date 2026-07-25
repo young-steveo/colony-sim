@@ -12,12 +12,18 @@ extends RefCounted
 const OCTAVES := 4
 const BASE_FREQUENCY := 1.0 / 48.0
 
+# Elevation bands (tile stack: substrate + surface). Below the grass line,
+# lowland dirt stays bare (shores); above it, grass grows ON the dirt as a
+# surface. High ground is walkable stone — impassable mountain mass comes
+# later as natural granite walls on top of it (GDD: Soft ground & mud /
+# tile stack).
 const THRESHOLD_WATER := 0.34
-const THRESHOLD_SAND := 0.40
-const THRESHOLD_GRASS := 0.72
+const THRESHOLD_GRASS := 0.46
+const THRESHOLD_STONE := 0.72
 
 
-static func generate(world_seed: int, width: int, height: int) -> PackedByteArray:
+## Returns { "substrate": PackedByteArray, "surface": PackedByteArray }.
+static func generate(world_seed: int, width: int, height: int) -> Dictionary:
 	var cell_count := width * height
 	var terrain_key := SimRng.key([world_seed, "terrain"])
 
@@ -61,19 +67,19 @@ static func generate(world_seed: int, width: int, height: int) -> PackedByteArra
 		amplitude *= 0.5
 		frequency *= 2.0
 
-	var tiles := PackedByteArray()
-	var _err3: int = tiles.resize(cell_count)
+	var substrate := PackedByteArray()
+	var surface := PackedByteArray()
+	var _err3: int = substrate.resize(cell_count)
+	var _err4: int = surface.resize(cell_count)
 	var inv_norm := 1.0 / norm
 	for c: int in cell_count:
-		tiles[c] = _tile_for(elevation[c] * inv_norm)
-	return tiles
-
-
-static func _tile_for(elevation: float) -> int:
-	if elevation < THRESHOLD_WATER:
-		return SimWorld.TILE_WATER
-	if elevation < THRESHOLD_SAND:
-		return SimWorld.TILE_SAND
-	if elevation < THRESHOLD_GRASS:
-		return SimWorld.TILE_GRASS
-	return SimWorld.TILE_ROCK
+		var e := elevation[c] * inv_norm
+		if e < THRESHOLD_WATER:
+			substrate[c] = SimWorld.TILE_WATER
+		elif e < THRESHOLD_STONE:
+			substrate[c] = SimWorld.TILE_DIRT
+			if e >= THRESHOLD_GRASS:
+				surface[c] = SimWorld.SURF_GRASS
+		else:
+			substrate[c] = SimWorld.TILE_STONE
+	return {"substrate": substrate, "surface": surface}

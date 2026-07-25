@@ -26,6 +26,7 @@ var world: SimWorld
 var actors: ActorPool
 var defs: AiDefs
 var structure_defs: StructureDefs
+var terrain_defs: TerrainDefs
 var bushes: Bushes
 var blueprints: Blueprints
 var food_field: FlowField
@@ -59,7 +60,8 @@ class _FieldJob:
 
 
 func _init(world_seed: int, map_width := 256, map_height := 256) -> void:
-	world = SimWorld.new(world_seed, map_width, map_height)
+	terrain_defs = TerrainDefs.load_defs()
+	world = SimWorld.new(world_seed, map_width, map_height, terrain_defs)
 	defs = AiDefs.load_file(AI_DEFS_PATH)
 	structure_defs = StructureDefs.load_defs()
 	bushes = Bushes.generate(world)

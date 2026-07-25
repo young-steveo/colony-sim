@@ -87,15 +87,24 @@ func _test_map_gen() -> void:
 	_check(a == b, "same seed -> identical map")
 	_check(a != c, "different seed -> different map")
 
+	var substrate: PackedByteArray = a["substrate"]
+	var surface: PackedByteArray = a["surface"]
 	var valid := true
 	var walkable := 0
-	for t: int in a:
-		if t < SimWorld.TILE_WATER or t > SimWorld.TILE_ROCK:
+	var grassy := 0
+	for i: int in substrate.size():
+		var t := substrate[i]
+		if t > SimWorld.TILE_STONE:
 			valid = false
-		if t == SimWorld.TILE_SAND or t == SimWorld.TILE_GRASS:
+		if surface[i] == SimWorld.SURF_GRASS and t != SimWorld.TILE_DIRT:
+			valid = false  # grass only grows on dirt
+		if t == SimWorld.TILE_DIRT or t == SimWorld.TILE_STONE:
 			walkable += 1
-	_check(valid, "all tiles are valid types")
+		if surface[i] == SimWorld.SURF_GRASS:
+			grassy += 1
+	_check(valid, "all substrates valid; grass only on dirt")
 	_check(walkable > 64 * 64 / 4, "map is at least 25%% walkable (got %d/4096)" % walkable)
+	_check(grassy > 0, "grass surface exists")
 
 
 func _test_flow_field() -> void:

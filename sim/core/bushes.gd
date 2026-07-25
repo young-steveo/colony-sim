@@ -1,9 +1,9 @@
 class_name Bushes
 extends RefCounted
 ## Berry scrub: the first food resource. Scattered deterministically on
-## grass at worldgen; each bush holds a finite berry count. `version` bumps
-## whenever a bush empties so the food flow field (and renderer) know to
-## refresh.
+## grass (a surface, not a substrate — bushes grow where grass grows) at
+## worldgen; each bush holds a finite berry count. `version` bumps whenever
+## a bush empties so the food flow field (and renderer) know to refresh.
 
 const SPAWN_CHANCE := 0.006
 const BERRIES_PER_BUSH := 24
@@ -20,7 +20,7 @@ static func generate(world: SimWorld) -> Bushes:
 	var scatter_key := SimRng.key([world.world_seed, "bushes"])
 	for y: int in world.height:
 		for x: int in world.width:
-			if world.tile_at(x, y) != SimWorld.TILE_GRASS or not world.is_walkable(x, y):
+			if world.surface_at(x, y) != SimWorld.SURF_GRASS or not world.is_walkable(x, y):
 				continue
 			var cell := y * world.width + x
 			if SimRng.randf(SimRng.combine(scatter_key, cell)) < SPAWN_CHANCE:
