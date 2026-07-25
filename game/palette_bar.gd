@@ -50,6 +50,7 @@ var loaded_idx := 0
 var shelves: Array[Dictionary] = []  # {name, swatches: [{label, type, mat, chip}]}
 var _alt_saved_tool := -1
 var _hover_slot := -1  # flat hover id: 0..3 tools, 10+i swatches, 20+i tabs
+var _board: NinePatchRect  # the 9-slice board (content/ui/panel.png)
 
 
 func setup(structure_defs: StructureDefs) -> void:
@@ -74,6 +75,22 @@ func setup(structure_defs: StructureDefs) -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	if not mouse_exited.is_connected(_on_mouse_exited):
 		mouse_exited.connect(_on_mouse_exited)
+	if _board == null:
+		# The board itself is the 9-slice panel (24x24, 8px corners —
+		# spec sheet 01). Center TILES, never stretches: grain must not
+		# smear. Drawn behind this control's own painting.
+		_board = NinePatchRect.new()
+		_board.texture = load("res://content/ui/panel.png")
+		_board.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		for m: String in ["patch_margin_left", "patch_margin_top", "patch_margin_right", "patch_margin_bottom"]:
+			_board.set(m, 8)
+		_board.axis_stretch_horizontal = NinePatchRect.AXIS_STRETCH_MODE_TILE
+		_board.axis_stretch_vertical = NinePatchRect.AXIS_STRETCH_MODE_TILE
+		_board.scale = Vector2(SCALE, SCALE)
+		_board.show_behind_parent = true
+		add_child(_board)
+	_board.position = Vector2(0, TAB_H * SCALE)
+	_board.size = Vector2(_board_w(), 44)  # local units; node scale is 2x
 	queue_redraw()
 
 
@@ -175,23 +192,8 @@ func _tab_rect(i: int) -> Rect2:
 func _draw() -> void:
 	var s := float(SCALE)
 	var board := _board_rect()
-	# Board anatomy (sheet 01): ink outline -> sheen top edge -> face,
-	# #966c6c shade line along bottom/right, nails 3px into corners.
-	draw_rect(board, INK)
-	var face := Rect2(board.position + Vector2(s, s), board.size - Vector2(2 * s, 2 * s))
-	draw_rect(face, BOARD_FACE)
-	draw_rect(Rect2(face.position, Vector2(face.size.x, s)), SHEEN)
-	draw_rect(Rect2(face.position + Vector2(0, face.size.y - s), Vector2(face.size.x, s)), BOARD_SHADE)
-	draw_rect(Rect2(face.position + Vector2(face.size.x - s, 0), Vector2(s, face.size.y)), BOARD_SHADE)
-	for corner: Vector2 in [
-		face.position + Vector2(3, 3) * s,
-		face.position + Vector2(face.size.x - 5 * s, 3 * s),
-		face.position + Vector2(3 * s, face.size.y - 5 * s),
-		face.position + face.size - Vector2(5, 5) * s,
-	]:
-		draw_rect(Rect2(corner, Vector2(2, 2) * s), DEEP_GRAIN)
-		draw_rect(Rect2(corner, Vector2(s, s)), SHEEN)
-	# Groove between tools and paint.
+	# The board face itself is the 9-slice NinePatchRect child (drawn
+	# behind); here only the groove between tools and paint.
 	var groove_x := (PAD + TOOL_COUNT * PITCH - 2 + 2) * SCALE
 	draw_rect(Rect2(Vector2(groove_x, board.position.y + 4 * s), Vector2(s, board.size.y - 8 * s)), BOARD_SHADE)
 	draw_rect(Rect2(Vector2(groove_x + s, board.position.y + 4 * s), Vector2(s, board.size.y - 8 * s)), SHEEN)
