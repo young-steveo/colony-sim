@@ -32,6 +32,7 @@ func _init() -> void:
 	_gen(donor, "dirt_rocky", Color("966c6c"), _rocky_features)
 	_gen(donor, "sand", Color("ab947a"), _sand_features)
 	_gen(donor, "mud", Color("9e4539"), _mud_features)
+	_gen(donor, "water", Color("0b5e65"), _water_features)
 	print("done")
 	quit()
 
@@ -124,6 +125,28 @@ func _sand_features(img: Image, donor: Image, ox: int, oy: int, rng: Rng) -> voi
 		for dx: int in rng.range_i(3, 4):
 			pts.append(Vector2i(x + dx, y))
 		var _ok := _stamp(img, donor, pts, Color("966c6c"))
+
+## Water: short horizontal ripple ticks one ramp up (the shallows
+## color), ends stepped down a pixel so they read as waves, not
+## scratches; rare darker trough beneath. Sparse — lakes are big and
+## bright specks aggregate at play zoom (the navy-fleck lesson).
+## Only interior + variant cells ever render (water is blend 0, every
+## land material scallops over it), but the whole sheet gets features
+## so the completeness contract holds.
+func _water_features(img: Image, donor: Image, ox: int, oy: int, rng: Rng) -> void:
+	if not rng.chance(0.75):
+		return
+	for i: int in rng.range_i(1, 2):
+		var x := ox + rng.range_i(2, 9)
+		var y := oy + rng.range_i(2, 12)
+		var run := rng.range_i(3, 5)
+		var pts: Array = []
+		for dx: int in run:
+			var dy := 1 if (dx == 0 or dx == run - 1) and rng.chance(0.6) else 0
+			pts.append(Vector2i(x + dx, y + dy))
+		if _stamp(img, donor, pts, Color("0b8a8f")) and rng.chance(0.3):
+			var _t := _stamp(img, donor, [Vector2i(x + 1, y + 2), Vector2i(x + 2, y + 2)], Color("084850"))
+
 
 ## Mud: dark pools plus the one licensed sparkle — single-pixel wet
 ## glints, sparse, so still pools and matte patches both exist.
