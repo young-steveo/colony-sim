@@ -28,6 +28,12 @@ var version := 1  # bumps on place/cancel/complete — goal set changed
 # around it workable immediately, not after the next field install.
 var _frontier := {}
 var _frontier_version := 0
+# Bumps only when a field's GOAL SET can change: placement, removal, or
+# a blueprint's owed materials reaching zero (it leaves the haul set and
+# joins the buildable frontier). Partial deliveries bump `version` (the
+# frontier cache and renderer key off it) but not this — flow-field
+# rebuilds are 132 ms Dijkstras and must stay rare.
+var goals_version := 1
 
 
 func _init(structure_defs: StructureDefs) -> void:
@@ -52,6 +58,7 @@ func place(world: SimWorld, x: int, y: int, type: int, material: int = 0) -> boo
 	var _e6: bool = delivered.push_back(0)
 	var _e4: bool = workers.push_back(0)
 	version += 1
+	goals_version += 1
 	return true
 
 
@@ -74,6 +81,8 @@ func deliver(cell: int, n: int) -> int:
 	if accepted > 0:
 		delivered[idx] += accepted
 		version += 1
+		if delivered[idx] >= defs.wood_costs[types[idx]]:
+			goals_version += 1
 	return accepted
 
 
@@ -114,6 +123,7 @@ func cancel(cell: int) -> bool:
 		return false
 	_remove(idx)
 	version += 1
+	goals_version += 1
 	return true
 
 
@@ -130,6 +140,7 @@ func add_work(cell: int, seconds: float) -> int:
 		return SimWorld.STRUCT_NONE
 	_remove(idx)
 	version += 1
+	goals_version += 1
 	return type
 
 

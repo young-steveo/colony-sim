@@ -90,8 +90,8 @@ func _init(world_seed: int, map_width := 256, map_height := 256) -> void:
 	_ctx.food_field = food_field
 	_bush_version_seen = bushes.version
 	_tree_version_seen = trees.version
-	_item_version_seen = items.version
-	_blueprint_version_seen = blueprints.version
+	_item_version_seen = items.goals_version
+	_blueprint_version_seen = blueprints.goals_version
 
 
 func spawn_actors(n: int) -> void:
@@ -183,10 +183,9 @@ func _dispatch_stale_fields() -> void:
 		# Walkability changed: every field's costs are stale.
 		_walkability_dirty = false
 		_bush_version_seen = bushes.version
-		_blueprint_version_seen = blueprints.version
-		_bush_version_seen = bushes.version
 		_tree_version_seen = trees.version
-		_item_version_seen = items.version
+		_item_version_seen = items.goals_version
+		_blueprint_version_seen = blueprints.goals_version
 		_dispatch_field(&"food", bushes.goal_cells())
 		_dispatch_field(&"bed", _bed_goals())
 		_dispatch_blueprint_field()
@@ -201,11 +200,11 @@ func _dispatch_stale_fields() -> void:
 	if trees.version != _tree_version_seen:
 		_tree_version_seen = trees.version
 		_dispatch_field(&"chop", trees.plan_goals())
-	if items.version != _item_version_seen:
-		_item_version_seen = items.version
+	if items.goals_version != _item_version_seen:
+		_item_version_seen = items.goals_version
 		_dispatch_field(&"wood", items.goal_cells())
-	if blueprints.version != _blueprint_version_seen:
-		_blueprint_version_seen = blueprints.version
+	if blueprints.goals_version != _blueprint_version_seen:
+		_blueprint_version_seen = blueprints.goals_version
 		_dispatch_blueprint_field()
 
 

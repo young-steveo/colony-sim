@@ -34,6 +34,10 @@ var actor_renderer: ActorRenderer
 var bush_renderer: BushRenderer
 var structure_renderer: StructureRenderer
 var field_overlay: FieldDebugRenderer
+var tree_renderer: TreeRenderer
+var item_renderer: ItemRenderer
+var carry_renderer: CarryRenderer
+var chop_plan_mode := false  # placeholder input until the plan-tool design round
 var palette: PaletteBar
 var tool_cursor: ToolCursor
 var build_overlay: BuildOverlay
@@ -52,6 +56,7 @@ var _screenshot_mode := false
 var _warmup_ticks := 0
 var _rally_arg := ""
 var _cam_arg := ""
+var _shot_frame := 90
 var _frame := 0
 
 
@@ -74,6 +79,8 @@ func _ready() -> void:
 			_warmup_ticks = maxi(0, int(a.trim_prefix("--warmup=")))
 		elif a.begins_with("--cam="):
 			_cam_arg = a.trim_prefix("--cam=")
+		elif a.begins_with("--shot-frame="):
+			_shot_frame = maxi(1, int(a.trim_prefix("--shot-frame=")))
 
 	cam = Camera2D.new()
 	add_child(cam)
@@ -105,6 +112,8 @@ func _ready() -> void:
 		_rally(int(parts[0]), int(parts[1]))
 	if "--house" in args:
 		_place_demo_house()
+	if "--cycle" in args:
+		_demo_material_cycle()
 	for t: int in _warmup_ticks:
 		sim.tick()
 	if "--inspect" in args and sim.actors.count > 0:
@@ -134,6 +143,12 @@ func _start(seed_value: int) -> void:
 		bush_renderer.queue_free()
 	if structure_renderer:
 		structure_renderer.queue_free()
+	if tree_renderer:
+		tree_renderer.queue_free()
+	if item_renderer:
+		item_renderer.queue_free()
+	if carry_renderer:
+		carry_renderer.queue_free()
 	if selection_ring:
 		selection_ring.queue_free()
 	if build_overlay:
@@ -151,6 +166,12 @@ func _start(seed_value: int) -> void:
 	structure_renderer = StructureRenderer.new()
 	add_child(structure_renderer)
 	structure_renderer.setup(sim.structure_defs)
+	item_renderer = ItemRenderer.new()
+	add_child(item_renderer)
+	item_renderer.setup(sim.world, sim.item_defs)
+	tree_renderer = TreeRenderer.new()
+	add_child(tree_renderer)
+	tree_renderer.setup(sim.world)
 	field_overlay = FieldDebugRenderer.new()
 	add_child(field_overlay)
 	selection_ring = Sprite2D.new()
@@ -174,6 +195,9 @@ func _start(seed_value: int) -> void:
 	actor_renderer = ActorRenderer.new()
 	add_child(actor_renderer)
 	actor_renderer.setup(world_seed)
+	carry_renderer = CarryRenderer.new()
+	add_child(carry_renderer)
+	carry_renderer.setup(sim.item_defs)
 	build_overlay = BuildOverlay.new()
 	add_child(build_overlay)
 	_apply_field_overlay()
@@ -201,7 +225,10 @@ func _process(delta: float) -> void:
 
 	var alpha := clampf(accumulator / Simulation.TICK_DT, 0.0, 1.0)
 	actor_renderer.sync(sim.actors, alpha, cam.zoom.x)
+	carry_renderer.sync(sim.actors, alpha, cam.zoom.x)
 	bush_renderer.sync(sim.bushes)
+	tree_renderer.sync(sim.trees)
+	item_renderer.sync(sim.items)
 	structure_renderer.sync(sim.world, sim.blueprints)
 	_pan_camera(delta)
 	_update_hud()
@@ -210,7 +237,7 @@ func _process(delta: float) -> void:
 
 	if _screenshot_mode:
 		_frame += 1
-		if _frame == 90:
+		if _frame == _shot_frame:
 			var _err: int = get_viewport().get_texture().get_image().save_png("res://tmp_screenshot.png")
 			get_tree().quit()
 
@@ -242,6 +269,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		palette.cycle_shelf()
 	elif event.is_action_pressed("ui_cancel"):
 		# Esc: put the brush down; pointer mode selects pawns.
+		chop_plan_mode = false
 		if palette.tool == PaletteBar.Tool.POINTER:
 			selected_id = -1
 		palette.select_tool(PaletteBar.Tool.POINTER)
@@ -260,6 +288,13 @@ func _unhandled_input(event: InputEvent) -> void:
 				return
 			i += 1
 		var key := event as InputEventKey
+		if key and key.pressed and not key.echo and key.physical_keycode == KEY_C:
+			# Placeholder chop-plan input pending the plan-tool design round:
+			# C toggles the mode; LMB plans a tree, RMB cancels the plan.
+			chop_plan_mode = not chop_plan_mode
+			if chop_plan_mode:
+				palette.select_tool(PaletteBar.Tool.POINTER)
+			return
 		if key and key.physical_keycode == KEY_ALT:
 			# Hold-Alt = temporary eyedropper while any tool is in hand.
 			if key.pressed and not key.echo:
@@ -273,6 +308,9 @@ func _unhandled_input(event: InputEvent) -> void:
 func _handle_mouse(event: InputEvent) -> void:
 	var tile_pos := get_global_mouse_position() / TerrainRenderer.TILE_PX
 	var cell := Vector2i(floori(tile_pos.x), floori(tile_pos.y))
+	if chop_plan_mode:
+		_handle_chop_input(event, cell)
+		return
 	var tool: int = palette.tool
 	var mb := event as InputEventMouseButton
 	if mb and mb.pressed:
@@ -346,6 +384,25 @@ func _commit_line(a: Vector2i, b: Vector2i, tool: int) -> void:
 
 ## Eyedropper: built structures first, then ghosts — pick up whatever the
 ## world has at this cell and load its swatch.
+## Chop-plan strokes: press or drag with LMB plans trees, RMB cancels.
+func _handle_chop_input(event: InputEvent, cell: Vector2i) -> void:
+	var mb := event as InputEventMouseButton
+	var mm := event as InputEventMouseMotion
+	var buttons := 0
+	if mb and mb.pressed:
+		buttons = 1 if mb.button_index == MOUSE_BUTTON_LEFT \
+				else (2 if mb.button_index == MOUSE_BUTTON_RIGHT else 0)
+	elif mm:
+		if mm.button_mask & MOUSE_BUTTON_MASK_LEFT:
+			buttons = 1
+		elif mm.button_mask & MOUSE_BUTTON_MASK_RIGHT:
+			buttons = 2
+	if buttons == 1:
+		var _d: bool = sim.designate_chop(cell.x, cell.y)
+	elif buttons == 2:
+		var _c: bool = sim.cancel_chop(cell.x, cell.y)
+
+
 func _eyedrop(cell: Vector2i) -> void:
 	var w := sim.world
 	if cell.x < 0 or cell.y < 0 or cell.x >= w.width or cell.y >= w.height:
@@ -400,6 +457,29 @@ func _pick_pawn(tile_pos: Vector2) -> int:
 
 ## Debug: paint an 8x6 house (walls, door, two beds) at the first fully
 ## walkable rect scanning out from the map center, and aim the camera at it.
+## Dev demo: chop plans on every tree near spawn + a wall row, so a
+## --warmup run screenshots the material cycle mid-flight.
+func _demo_material_cycle() -> void:
+	var w := sim.world.width
+	@warning_ignore("integer_division")
+	var cx := w / 2
+	@warning_ignore("integer_division")
+	var cy := sim.world.height / 2
+	for cell: int in sim.trees.cells.duplicate():
+		var tx := cell % w
+		@warning_ignore("integer_division")
+		var ty := cell / w
+		if maxi(absi(tx - cx), absi(ty - cy)) <= 30:
+			var _d: bool = sim.designate_chop(tx, ty)
+	var placed := 0
+	for dy: int in range(-6, 7):
+		for dx: int in range(-6, 7):
+			if placed >= 6:
+				break
+			if sim.place_blueprint(cx + dx, cy + dy, SimWorld.STRUCT_WALL):
+				placed += 1
+
+
 func _place_demo_house() -> void:
 	var w := sim.world
 	@warning_ignore("integer_division")
@@ -483,13 +563,15 @@ func _update_hud() -> void:
 			responding += 1
 	var sw := palette.loaded_swatch()
 	var build_text: String = TOOL_NAMES[palette.tool] + " / " + str(sw["label"]).to_lower()
+	if chop_plan_mode:
+		build_text = "chop plans (LMB plan / RMB cancel)"
 	hud.text = (
 		"seed %d | actors %d (%d rallying) | brush: %s | bp %d | speed %s | zoom %s | fps %d | sim tick %.2f ms | tick %d\n" % [
 			world_seed, sim.actors.count, responding, build_text, sim.blueprints.cells.size(),
 			speed_text, str(ZOOM_STEPS[zoom_idx]),
 			Engine.get_frames_per_second(), avg_tick_ms, sim.tick_count,
 		]
-		+ "[B/P/I/X] tools  [1-8] swatches  [Tab] shelf  [shift+click] line  [hold Alt] pick  [RMB] erase  [Esc] pointer (inspect / shift+click rally)  [Space] pause  [F1-F3] speed  [F] +100  [G] field  [N] seed  [R] regen  [WASD] pan  [wheel] zoom"
+		+ "[B/P/I/X] tools  [C] chop plans  [1-8] swatches  [Tab] shelf  [shift+click] line  [hold Alt] pick  [RMB] erase  [Esc] pointer (inspect / shift+click rally)  [Space] pause  [F1-F3] speed  [F] +100  [G] field  [N] seed  [R] regen  [WASD] pan  [wheel] zoom"
 	)
 
 

@@ -21,7 +21,11 @@ var cells := PackedInt32Array()
 var types := PackedByteArray()
 var counts := PackedInt32Array()
 var cell_lookup := {}  # cell -> stack index (one stack per tile)
-var version := 1  # bumps on every content change (fields and renderer both key off it)
+var version := 1  # bumps on every content change (renderer keys off this)
+# Bumps only when the SET of occupied cells changes (stack born or
+# emptied). The wood flow field keys off this, not `version`: a 132 ms
+# Dijkstra must not rebuild because a stack went from 6 to 3.
+var goals_version := 1
 
 
 func _init(item_defs: ItemDefs) -> void:
@@ -65,6 +69,7 @@ func add(cell: int, type: int, n: int) -> int:
 	var _e2: bool = types.push_back(type)
 	var _e3: bool = counts.push_back(placed)
 	version += 1
+	goals_version += 1
 	return placed
 
 
@@ -106,6 +111,7 @@ func take(cell: int, n: int) -> int:
 	counts[idx] -= taken
 	if counts[idx] <= 0:
 		_remove(idx)
+		goals_version += 1
 	if taken > 0:
 		version += 1
 	return taken
@@ -121,6 +127,7 @@ func displace_from(world: SimWorld, cell: int) -> void:
 	var type := int(types[idx])
 	var n := counts[idx]
 	_remove(idx)
+	goals_version += 1
 	scatter(world, _nearest_walkable(world, cell), type, n)
 	version += 1
 
@@ -146,6 +153,7 @@ func _force_add(cell: int, type: int, n: int) -> void:
 	var _e2: bool = types.push_back(type)
 	var _e3: bool = counts.push_back(n)
 	version += 1
+	goals_version += 1
 
 
 func _nearest_walkable(world: SimWorld, cell: int) -> int:

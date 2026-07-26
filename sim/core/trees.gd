@@ -17,9 +17,9 @@ const CHOP_WORK_SECONDS := 4.0
 const YIELD_MIN := 4
 const YIELD_MAX := 8
 const GROVE_FREQUENCY := 24.0  # tiles per grove-noise feature
-const GROVE_THRESHOLD := 0.58  # noise above this is grove interior
-const CHANCE_GROVE := 0.22
-const CHANCE_SPARSE := 0.008
+const GROVE_THRESHOLD := 0.62  # noise above this is grove interior
+const CHANCE_GROVE := 0.16
+const CHANCE_SPARSE := 0.003
 const MAX_WORKERS_PER_TREE := 1
 
 var cells := PackedInt32Array()
