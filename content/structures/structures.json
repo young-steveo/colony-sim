@@ -1,4 +1,9 @@
 {
+	"structures": [
+		{ "id": "wall", "work": 3.0, "cost": { "wood": 2 } },
+		{ "id": "door", "work": 4.0, "cost": { "wood": 2 } },
+		{ "id": "bed", "work": 5.0, "cost": { "wood": 4 } }
+	],
 	"wall_materials": [
 		{ "id": "wood", "sheet": "res://content/structures/wall_wood.png" },
 		{ "id": "marble", "sheet": "res://content/structures/wall_marble.png" },

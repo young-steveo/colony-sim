@@ -9,10 +9,15 @@ var defs: AiDefs
 var world: SimWorld
 var bushes: Bushes
 var blueprints: Blueprints
+var trees: Trees
+var items: Items
 var food_field: FlowField
 var bed_field: FlowField
 var blueprint_field: FlowField
 var command_field: FlowField
+var chop_field: FlowField  # standing chop plans
+var wood_field: FlowField  # ground wood stacks
+var haul_field: FlowField  # blueprints awaiting materials
 var tick := 0
 var build_capacity := 0  # workable frontier jobs right now (live)
 # Sorted field distances of every pawn currently on the build action —

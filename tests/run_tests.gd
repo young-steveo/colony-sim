@@ -14,6 +14,7 @@ func _init() -> void:
 	_test_ai()
 	_test_building()
 	_test_wall_materials()
+	_test_material_cycle()
 	_test_sheet_completeness()
 	_test_simulation()
 	print("")
@@ -171,7 +172,7 @@ func _test_ai() -> void:
 	print("AI:")
 	var defs := AiDefs.load_file(Simulation.AI_DEFS_PATH)
 	_check(defs.needs.size() == 3, "three needs load (hunger, rest, safety)")
-	_check(defs.actions.size() == 5, "five actions load (eat, sleeps, build, wander)")
+	_check(defs.actions.size() == 7, "seven actions load (eat, sleeps, chop, haul, build, wander)")
 	_check(defs.need_index(&"hunger") >= 0, "need_index resolves hunger")
 	var expected_buckets: Array[int] = [2, 1, 0]
 	_check(defs.bucket_order == expected_buckets, "buckets ordered high to low")
@@ -228,6 +229,14 @@ func _test_ai() -> void:
 	_check(scored, "last_scores populated for inspection")
 
 
+## Deliver every placed blueprint's full cost directly. The legacy
+## construction tests stay about ORDERING and CROWDING; the material
+## loop (chop -> haul -> build) is covered by _test_material_cycle.
+func _fund_blueprints(s: Simulation) -> void:
+	for cell: int in s.blueprints.cells.duplicate():
+		var _n: int = s.blueprints.deliver(cell, 99)
+
+
 func _test_building() -> void:
 	print("Building:")
 	var sim_a := Simulation.new(11, 96, 96)
@@ -268,6 +277,7 @@ func _test_building() -> void:
 					if placed:
 						wall_count += 1
 		var _b: bool = s.place_blueprint(ox + 2, oy + 2, SimWorld.STRUCT_BED)
+		_fund_blueprints(s)
 		s.spawn_actors(10)
 	_check(wall_count > 10, "perimeter wall blueprints placed (%d)" % wall_count)
 	_check(sim_a.blueprints.cells.size() == wall_count + 2, "blueprint ledger matches")
@@ -329,6 +339,7 @@ func _test_building() -> void:
 		if dy2 >= 0:
 			break
 	var _p2: bool = sim_c.place_blueprint(dx2, dy2, SimWorld.STRUCT_DOOR)
+	_fund_blueprints(sim_c)
 	var build_idx := sim_c.defs.action_index(&"build")
 	var max_builders := 0
 	for t: int in 900:
@@ -369,6 +380,7 @@ func _test_building() -> void:
 		for dx: int in 5:
 			for dy: int in 5:
 				var _w2: bool = s.place_blueprint(sx + dx, sy + dy, SimWorld.STRUCT_WALL)
+		_fund_blueprints(s)
 		s.spawn_actors(12)
 	var rest_idx2 := sim_d.defs.need_index(&"rest")
 	var pinned_rest := 0
@@ -442,12 +454,144 @@ func _test_wall_materials() -> void:
 	_check(sim.blueprints.material_at(c3) == 1, "material survives swap-remove (cell 3)")
 	_check(sim.blueprints.material_at(c1) == 0, "cancelled cell reports no material")
 
-	# Completion carries material into the built structure.
+	# Completion carries material into the built structure. add_work on an
+	# unfunded blueprint must refuse — the material gate.
 	var mat := sim.blueprints.material_at(c2)
+	_check(
+		sim.blueprints.add_work(c2, 99.0) == SimWorld.STRUCT_NONE,
+		"add_work refuses an unfunded blueprint (awaiting materials)"
+	)
+	var _f2: int = sim.blueprints.deliver(c2, 99)
 	var built := sim.blueprints.add_work(c2, 99.0)
 	sim.world.set_structure(c2, built, mat)
 	_check(built == SimWorld.STRUCT_WALL, "blueprint completes into a wall")
 	_check(sim.world.structure_material_at(c2) == 1, "built wall keeps its material")
+
+
+func _test_material_cycle() -> void:
+	print("Material cycle:")
+	var idefs := ItemDefs.load_defs()
+	_check(idefs.count() >= 1 and idefs.ids[Items.WOOD] == "wood", "item defs load; wood is item 0")
+	_check(idefs.stack_sizes[Items.WOOD] == 6, "wood stack size comes from items.json (6)")
+
+	var sdefs := StructureDefs.load_defs()
+	_check(
+		is_equal_approx(sdefs.work_seconds[SimWorld.STRUCT_WALL], 3.0),
+		"wall work seconds come from structures.json"
+	)
+	_check(sdefs.wood_costs[SimWorld.STRUCT_WALL] == 2, "wall wood cost comes from structures.json")
+
+	# Items pool: merge to the stack cap, spill via scatter, take back out.
+	var sim := Simulation.new(7, 96, 96)
+	var mid := -1
+	for cy: int in range(4, 90):
+		var ok := true
+		for d: int in 9:
+			if not sim.world.is_walkable(4 + (d % 3) - 1, cy + (d / 3) - 1):
+				ok = false
+		if ok:
+			mid = cy * sim.world.width + 4
+			break
+	_check(mid >= 0, "found an open items site")
+	var placed := sim.items.add(mid, Items.WOOD, 4)
+	placed += sim.items.add(mid, Items.WOOD, 4)
+	_check(placed == 6 and sim.items.count_at(mid) == 6, "stack merges and caps at stack size")
+	sim.items.scatter(sim.world, mid, Items.WOOD, 5)
+	var total := 0
+	for i: int in sim.items.cells.size():
+		total += sim.items.counts[i]
+	_check(total == 11 and sim.items.cells.size() >= 2, "scatter spills overflow to neighbors")
+	var taken := sim.items.take(mid, 99)
+	_check(taken == 6 and not sim.items.has_at(mid), "take empties and removes the stack")
+
+	# Trees: deterministic worldgen, plans, felling yield.
+	var sim2 := Simulation.new(7, 96, 96)
+	_check(sim.trees.cells.size() > 0, "trees generated (%d)" % sim.trees.cells.size())
+	_check(sim.trees.cells == sim2.trees.cells, "tree placement deterministic")
+	var tcell := sim.trees.cells[0]
+	@warning_ignore("integer_division")
+	var tx := tcell % sim.world.width
+	@warning_ignore("integer_division")
+	var ty := tcell / sim.world.width
+	_check(sim.designate_chop(tx, ty), "tree designated for chopping (a plan)")
+	_check(not sim.designate_chop(tx, ty), "double-designation refused")
+	_check(not sim.place_blueprint(tx, ty, SimWorld.STRUCT_WALL), "trees block construction")
+	var wood_yield := sim.trees.add_work(sim.world, tcell, 99.0)
+	_check(wood_yield >= 4 and wood_yield <= 8, "felled tree yields 4-8 wood (%d)" % wood_yield)
+	_check(not sim.trees.has_tree_at(tcell), "felled tree is gone")
+	_check(sim2.trees.add_work(sim2.world, tcell, 99.0) == wood_yield, "yield deterministic")
+
+	# Cancel refunds delivered materials as ground items.
+	var bx := -1
+	var by := -1
+	for cy: int in range(4, 90):
+		if sim.world.is_walkable(50, cy) and not sim.trees.has_tree_at(cy * sim.world.width + 50):
+			bx = 50
+			by = cy
+			break
+	var _pb: bool = sim.place_blueprint(bx, by, SimWorld.STRUCT_WALL)
+	var bcell := by * sim.world.width + bx
+	_check(sim.blueprints.remaining_delivery(bcell) == 2, "fresh wall blueprint owes its cost")
+	var _dv: int = sim.blueprints.deliver(bcell, 2)
+	_check(sim.blueprints.is_buildable(bcell), "funded blueprint is buildable")
+	var before := sim.items.count_at(bcell)
+	var _cc: bool = sim.cancel_blueprint(bx, by)
+	var refunded := 0
+	for i: int in sim.items.cells.size():
+		refunded += sim.items.counts[i]
+	_check(sim.items.count_at(bcell) >= before, "cancel refunds wood to the ground")
+
+	# The proper verb, end to end: chop plans -> logs -> hauling -> walls.
+	_material_cycle_integration()
+
+
+## Two identical sims run the full loop; the verb is proper when a wall
+## costs wood a pawn actually carried — and it must be deterministic.
+func _material_cycle_integration() -> void:
+	var sim_a := Simulation.new(41, 96, 96)
+	var sim_b := Simulation.new(41, 96, 96)
+	var w := sim_a.world.width
+	@warning_ignore("integer_division")
+	var cx := w / 2
+	@warning_ignore("integer_division")
+	var cy := sim_a.world.height / 2
+	# Designate every tree near the spawn knot; place a few walls nearby.
+	var designated := 0
+	for s: Simulation in [sim_a, sim_b]:
+		designated = 0
+		for cell: int in s.trees.cells.duplicate():
+			var tx := cell % w
+			@warning_ignore("integer_division")
+			var ty := cell / w
+			if maxi(absi(tx - cx), absi(ty - cy)) <= 30:
+				if s.designate_chop(tx, ty):
+					designated += 1
+		var placed_walls := 0
+		for dy: int in range(-6, 7):
+			for dx: int in range(-6, 7):
+				if placed_walls >= 3:
+					break
+				if s.place_blueprint(cx + dx, cy + dy, SimWorld.STRUCT_WALL):
+					placed_walls += 1
+		s.spawn_actors(8)
+	_check(designated > 0, "trees designated near spawn (%d)" % designated)
+
+	for t: int in 9000:
+		sim_a.tick()
+		sim_b.tick()
+	var walls := 0
+	for cell: int in sim_a.world.width * sim_a.world.height:
+		if sim_a.world.structure_at_cell(cell) == SimWorld.STRUCT_WALL:
+			walls += 1
+	_check(sim_a.trees.felled_total > 0, "pawns felled planned trees (%d)" % sim_a.trees.felled_total)
+	_check(walls > 0, "walls built from hauled wood (%d)" % walls)
+	_check(
+		sim_a.actors.positions == sim_b.actors.positions
+			and sim_a.items.cells == sim_b.items.cells
+			and sim_a.items.counts == sim_b.items.counts
+			and sim_a.world.structures == sim_b.world.structures,
+		"material cycle fully deterministic"
+	)
 
 
 ## Every blob sheet the defs reference must have art in all 47 mapped

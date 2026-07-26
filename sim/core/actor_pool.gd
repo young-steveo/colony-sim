@@ -62,12 +62,18 @@ const BEDREST_GOTO := 0
 const BEDREST_SLEEP := 1
 const BUILD_TRAVEL := 0
 const BUILD_WORK := 1
+const CHOP_TRAVEL := 0
+const CHOP_WORK := 1
+const HAUL_FETCH := 0
+const HAUL_DELIVER := 1
 const PHASE_NAMES := {
 	&"eat": ["goto", "consume"],
 	&"sleep": ["sleep"],
 	&"sleep_bed": ["goto", "sleep"],
 	&"build": ["travel", "work"],
 	&"wander": ["wait", "stroll"],
+	&"chop": ["travel", "chop"],
+	&"haul": ["fetch", "deliver"],
 }
 
 var count := 0
@@ -83,7 +89,9 @@ var current_action := PackedInt32Array()
 var phase := PackedInt32Array()  # phase within the current activity
 var phase_timer := PackedInt32Array()  # scratch timer; resets on phase change
 var build_claims := PackedInt32Array()  # blueprint cell being worked, or -1
-var build_cooldowns := PackedInt32Array()  # no build re-pick until this tick
+var work_cooldowns := PackedInt32Array()  # no work re-pick until this tick (build/chop/haul)
+var carry_type := PackedInt32Array()  # item type in hands, or -1
+var carry_count := PackedInt32Array()  # how many of it
 var headings := PackedFloat32Array()  # stroll direction, persists across legs
 var needs: Array[PackedFloat32Array] = []
 var last_scores := PackedFloat32Array()  # count * n_actions, row per pawn
@@ -112,7 +120,9 @@ func spawn(world: SimWorld, defs: AiDefs, n: int) -> void:
 	var _e10: int = phase.resize(new_count)
 	var _e11: int = last_scores.resize(new_count * _n_actions)
 	var _e13: int = build_claims.resize(new_count)
-	var _e14: int = build_cooldowns.resize(new_count)
+	var _e14: int = work_cooldowns.resize(new_count)
+	var _e17: int = carry_type.resize(new_count)
+	var _e18: int = carry_count.resize(new_count)
 	var _e15: int = headings.resize(new_count)
 	var _e16: int = phase_timer.resize(new_count)
 	for nd: int in _n_needs:
@@ -138,7 +148,9 @@ func spawn(world: SimWorld, defs: AiDefs, n: int) -> void:
 		phase[i] = 0
 		phase_timer[i] = 0
 		build_claims[i] = -1
-		build_cooldowns[i] = 0
+		work_cooldowns[i] = 0
+		carry_type[i] = -1
+		carry_count[i] = 0
 		headings[i] = s.nextf() * TAU
 		for nd: int in _n_needs:
 			# Staggered starting levels so the colony doesn't eat and sleep
@@ -148,11 +160,13 @@ func spawn(world: SimWorld, defs: AiDefs, n: int) -> void:
 
 
 ## A rally command exists: everyone answers the call. Rallying is an
-## interruption like any other — the current activity exits cleanly.
-func rally() -> void:
+## interruption like any other — the current activity exits cleanly (a
+## carrying hauler drops the log where they stand and runs; the pile is
+## the story of the interruption).
+func rally(ctx: AiContext) -> void:
 	for i: int in count:
 		responding[i] = 1
-		_stop_action(i)
+		_stop_action(ctx, i)
 
 
 func need_value(need_idx: int, i: int) -> float:
@@ -169,7 +183,7 @@ func tick(ctx: AiContext, dt: float) -> void:
 
 	for i: int in count:
 		prev_positions[i] = positions[i]
-		_rescue_if_stuck(ctx.world, i)
+		_rescue_if_stuck(ctx, i)
 		if responding[i] == 1 and ctx.command_field != null:
 			_tick_rally(ctx, i, dt)
 			continue
@@ -188,8 +202,12 @@ func tick(ctx: AiContext, dt: float) -> void:
 				outcome = _build_tick(ctx, i, dt)
 			&"wander":
 				outcome = _wander_tick(ctx, i, dt)
+			&"chop":
+				outcome = _chop_tick(ctx, i, dt)
+			&"haul":
+				outcome = _haul_tick(ctx, i, dt)
 		if outcome != ACT_RUNNING:
-			_stop_action(i)  # re-decide next tick
+			_stop_action(ctx, i)  # re-decide next tick
 
 
 # --- decision -------------------------------------------------------------
@@ -199,7 +217,9 @@ func _decide(ctx: AiContext, i: int) -> void:
 	var row := i * _n_actions
 	for a: int in _n_actions:
 		var action := ctx.defs.actions[a]
-		if action.execution == &"build" and ctx.tick < build_cooldowns[i]:
+		var is_work := action.execution == &"build" or action.execution == &"chop" \
+				or action.execution == &"haul"
+		if is_work and ctx.tick < work_cooldowns[i]:
 			# Recently blocked or crowded out: sit this one out briefly so
 			# stale-field churn doesn't freeze pawns mid-route.
 			last_scores[row + a] = 0.0
@@ -234,7 +254,7 @@ func _decide(ctx: AiContext, i: int) -> void:
 		# Preemption is the brain's right, but the losing activity always
 		# gets its exit — claims and phase state never leak across.
 		if current_action[i] != NO_ACTION:
-			_exit_action(i)
+			_exit_action(ctx, i)
 		_start_action(ctx, i, chosen)
 
 
@@ -248,6 +268,17 @@ func _input_value(ctx: AiContext, i: int, con: AiDefs.ConsiderationDef) -> float
 			return _field_distance(ctx, i, ctx.bed_field)
 		&"blueprint_distance":
 			return _field_distance(ctx, i, ctx.blueprint_field)
+		&"chop_distance":
+			return _field_distance(ctx, i, ctx.chop_field)
+		&"wood_distance":
+			# Wood already in hand is wood at distance zero — otherwise a
+			# mid-carry re-decide with no ground stacks left would veto
+			# haul and drop the last load en route.
+			if carry_count[i] > 0:
+				return 0.0
+			return _field_distance(ctx, i, ctx.wood_field)
+		&"haul_target_distance":
+			return _field_distance(ctx, i, ctx.haul_field)
 		&"build_crowding":
 			# Proximity-ranked crowding: of the builders currently
 			# assigned, how many are CLOSER to the work than me, against
@@ -297,16 +328,22 @@ func _start_action(ctx: AiContext, i: int, action_idx: int) -> void:
 
 ## Exit hook: the ONLY place pawn-local activity state is released. Every
 ## way out of an activity — DONE, FAILED, preemption, rally, rescue,
-## displacement — funnels through here so nothing leaks into the next one.
-func _exit_action(i: int) -> void:
+## displacement — funnels through here so nothing leaks into the next
+## one. Anything still in the pawn's hands goes to the ground where they
+## stand (wood never vanishes; a dropped log is a visible story beat).
+func _exit_action(ctx: AiContext, i: int) -> void:
 	phase[i] = 0
 	phase_timer[i] = 0
 	targets[i] = positions[i]
 	build_claims[i] = -1
+	if carry_count[i] > 0:
+		ctx.items.scatter(ctx.world, _cell_of(ctx.world, positions[i]), carry_type[i], carry_count[i])
+	carry_type[i] = -1
+	carry_count[i] = 0
 
 
-func _stop_action(i: int) -> void:
-	_exit_action(i)
+func _stop_action(ctx: AiContext, i: int) -> void:
+	_exit_action(ctx, i)
 	current_action[i] = NO_ACTION  # re-decide next tick
 
 
@@ -339,7 +376,7 @@ func phase_label(defs: AiDefs, i: int) -> String:
 func _tick_rally(ctx: AiContext, i: int, dt: float) -> void:
 	if not _follow_field(ctx, i, ctx.command_field, dt):
 		responding[i] = 0
-		_stop_action(i)
+		_stop_action(ctx, i)
 
 
 func _eat_tick(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> int:
@@ -418,14 +455,15 @@ func _build_tick(ctx: AiContext, i: int, dt: float) -> int:
 	if phase[i] == BUILD_WORK:
 		targets[i] = positions[i]
 		if not ctx.blueprints.add_worker(claim):
-			build_cooldowns[i] = ctx.tick + 45
+			work_cooldowns[i] = ctx.tick + 45
 			return ACT_FAILED  # crowded this tick; re-decide
 		var mat := ctx.blueprints.material_at(claim)
 		var built := ctx.blueprints.add_work(claim, dt)
 		if built != SimWorld.STRUCT_NONE:
 			ctx.world.set_structure(claim, built, mat)
 			if built == SimWorld.STRUCT_WALL:
-				_displace_from(ctx.world, claim)
+				_displace_from(ctx, claim)
+				ctx.items.displace_from(ctx.world, claim)
 			# Stay on the job: clear the claim and pick the next adjacent
 			# frontier cell next tick. (Needs still preempt at the regular
 			# decide cadence.) Re-rolling life plans after every wall is
@@ -436,7 +474,7 @@ func _build_tick(ctx: AiContext, i: int, dt: float) -> int:
 	# cell short of the goal (you can't build what you stand on). Blocked or
 	# out of road: cool down so we don't statue in place on a stale field.
 	if ctx.blueprint_field == null or not _follow_field(ctx, i, ctx.blueprint_field, dt, true):
-		build_cooldowns[i] = ctx.tick + 45
+		work_cooldowns[i] = ctx.tick + 45
 		return ACT_FAILED
 	return ACT_RUNNING
 
@@ -466,6 +504,9 @@ func _pick_adjacent_blueprint(ctx: AiContext, cell: int) -> int:
 		# LIVE (cached per blueprint change), never the stale async field:
 		# a builder finishing the center must find the ring workable now.
 		if not ctx.blueprints.is_frontier(ctx.world, ncell):
+			continue
+		# Awaiting materials: a hauler's job, not a builder's.
+		if not ctx.blueprints.is_buildable(ncell):
 			continue
 		if ctx.occupied.has(ncell):
 			continue
@@ -524,7 +565,8 @@ static func _cells_adjacent(world: SimWorld, a: int, b: int) -> bool:
 ## Safety net: a pawn can transiently end up inside fresh construction
 ## (walked through a cell the tick it completed). Teleport to the nearest
 ## walkable cell, scanning outward deterministically.
-func _rescue_if_stuck(world: SimWorld, i: int) -> void:
+func _rescue_if_stuck(ctx: AiContext, i: int) -> void:
+	var world := ctx.world
 	var x := floori(positions[i].x)
 	var y := floori(positions[i].y)
 	if world.is_walkable(x, y):
@@ -537,13 +579,14 @@ func _rescue_if_stuck(world: SimWorld, i: int) -> void:
 				if world.is_walkable(x + dx, y + dy):
 					positions[i] = Vector2(x + dx + 0.5, y + dy + 0.5) + jitter[i]
 					prev_positions[i] = positions[i]
-					_stop_action(i)
+					_stop_action(ctx, i)
 					return
 
 
 ## A blocking structure just appeared at this cell: move any pawns standing
 ## in it to the nearest walkable neighbor (deterministic scan order).
-func _displace_from(world: SimWorld, cell: int) -> void:
+func _displace_from(ctx: AiContext, cell: int) -> void:
+	var world := ctx.world
 	@warning_ignore("integer_division")
 	var cy := cell / world.width
 	var cx := cell % world.width
@@ -556,8 +599,83 @@ func _displace_from(world: SimWorld, cell: int) -> void:
 			if world.is_walkable(nx, ny):
 				positions[i] = Vector2(nx + 0.5, ny + 0.5) + jitter[i]
 				prev_positions[i] = positions[i]
-				_stop_action(i)
+				_stop_action(ctx, i)
 				break
+
+
+## Chopping: walk the chop field to a planned tree, then work it down.
+## Trees are walkable, so the chopper stands on the tree's cell (good
+## enough until chop animations land). Felling scatters the yield where
+## the tree stood — the sim's first item spawn.
+func _chop_tick(ctx: AiContext, i: int, dt: float) -> int:
+	var cell := _cell_of(ctx.world, positions[i])
+	var on_planned_tree := ctx.trees.is_designated(cell)
+	if phase[i] != (CHOP_WORK if on_planned_tree else CHOP_TRAVEL):
+		_set_phase(i, CHOP_WORK if on_planned_tree else CHOP_TRAVEL)
+
+	if phase[i] == CHOP_WORK:
+		targets[i] = positions[i]
+		if not ctx.trees.add_worker(cell):
+			work_cooldowns[i] = ctx.tick + 45
+			return ACT_FAILED  # someone else is on this tree; re-decide
+		var wood := ctx.trees.add_work(ctx.world, cell, dt)
+		if wood > 0:
+			ctx.items.scatter(ctx.world, cell, Items.WOOD, wood)
+			return ACT_DONE  # tree's down; re-decide (often: the next tree)
+		return ACT_RUNNING
+	if ctx.chop_field == null or not _follow_field(ctx, i, ctx.chop_field, dt):
+		work_cooldowns[i] = ctx.tick + 45
+		return ACT_FAILED
+	return ACT_RUNNING
+
+
+## Hauling: fetch wood from the nearest ground stack, carry it to the
+## nearest blueprint still owed materials, deposit into it (and any
+## needing neighbors) — repeat until the hands are empty. No stack
+## claims in v1: two haulers racing to one stack self-heal through
+## re-decide, and the loser's shrug is visible, honest behavior. Cargo
+## never needs explicit dropping here — every exit path goes through
+## the exit hook, which grounds whatever is still in hand.
+func _haul_tick(ctx: AiContext, i: int, dt: float) -> int:
+	var cell := _cell_of(ctx.world, positions[i])
+	var carrying := carry_count[i] > 0
+	if phase[i] != (HAUL_DELIVER if carrying else HAUL_FETCH):
+		_set_phase(i, HAUL_DELIVER if carrying else HAUL_FETCH)
+
+	if phase[i] == HAUL_FETCH:
+		if ctx.items.has_at(cell) and ctx.items.type_at(cell) == Items.WOOD:
+			var capacity := ctx.items.defs.stack_sizes[Items.WOOD]
+			var taken := ctx.items.take(cell, capacity)
+			if taken > 0:
+				carry_type[i] = Items.WOOD
+				carry_count[i] = taken
+				return ACT_RUNNING  # deliver phase picks up next tick
+		if ctx.wood_field == null or not _follow_field(ctx, i, ctx.wood_field, dt):
+			work_cooldowns[i] = ctx.tick + 45
+			return ACT_FAILED  # raced to an empty stack, or no wood at all
+		return ACT_RUNNING
+
+	# Deliver: feed any owed blueprint we're standing on or beside.
+	var fed := false
+	var w := ctx.world.width
+	@warning_ignore("integer_division")
+	var cy := cell / w
+	var cx := cell % w
+	for d: int in 9:
+		var ncell := cell if d == 8 else (cy + FlowField.DY[d]) * w + cx + FlowField.DX[d]
+		var accepted := ctx.blueprints.deliver(ncell, carry_count[i])
+		if accepted > 0:
+			carry_count[i] -= accepted
+			fed = true
+			if carry_count[i] <= 0:
+				carry_type[i] = -1
+				return ACT_DONE
+	if fed:
+		return ACT_RUNNING  # partial deposit; keep feeding neighbors next tick
+	if ctx.haul_field == null or not _follow_field(ctx, i, ctx.haul_field, dt):
+		work_cooldowns[i] = ctx.tick + 45
+		return ACT_FAILED  # demand vanished mid-carry; exit hook grounds the load
+	return ACT_RUNNING
 
 
 ## A stroll alternates walking legs with standing pauses; each DONE comes

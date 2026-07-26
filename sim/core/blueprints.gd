@@ -1,27 +1,22 @@
 class_name Blueprints
 extends RefCounted
 ## Construction designations: the player paints blueprints, pawns build
-## them. A blueprint is a world entity with a lifecycle — placed, worked on
+## them. A blueprint is a world entity with a lifecycle — placed, awaiting
+## materials (haulers deliver its wood cost), buildable, worked on
 ## (possibly by several pawns across many ticks), completed into a
-## structure. The hauling seam: when materials exist, an "awaiting
-## materials" state slots in before "buildable" without touching anything
-## else.
-
-## Build effort in seconds of pawn work, by structure type.
-const WORK_SECONDS: Dictionary = {
-	SimWorld.STRUCT_WALL: 3.0,
-	SimWorld.STRUCT_DOOR: 4.0,
-	SimWorld.STRUCT_BED: 5.0,
-}
+## structure. The hauling seam this header always promised is live:
+## delivery state gates work, nothing else changed shape.
 
 # One builder per job: keeps future skill rolls, build failures, and XP
 # attribution unambiguous (a "helper" mechanic can lift this someday).
 const MAX_WORKERS_PER_CELL := 1
 
+var defs: StructureDefs
 var cells := PackedInt32Array()
 var types := PackedByteArray()
 var materials := PackedByteArray()  # StructureDefs material index
 var work_done := PackedFloat32Array()
+var delivered := PackedInt32Array()  # wood delivered so far (v1 single-resource)
 var workers := PackedByteArray()  # workers this tick; reset by the sim
 var cell_lookup := {}
 var version := 1  # bumps on place/cancel/complete — goal set changed
@@ -33,6 +28,10 @@ var version := 1  # bumps on place/cancel/complete — goal set changed
 # around it workable immediately, not after the next field install.
 var _frontier := {}
 var _frontier_version := 0
+
+
+func _init(structure_defs: StructureDefs) -> void:
+	defs = structure_defs
 
 
 func has_at(cell: int) -> bool:
@@ -50,9 +49,56 @@ func place(world: SimWorld, x: int, y: int, type: int, material: int = 0) -> boo
 	var _e2: bool = types.push_back(type)
 	var _e5: bool = materials.push_back(material)
 	var _e3: bool = work_done.push_back(0.0)
+	var _e6: bool = delivered.push_back(0)
 	var _e4: bool = workers.push_back(0)
 	version += 1
 	return true
+
+
+## Wood still owed to the blueprint at this cell (0 if none or complete).
+func remaining_delivery(cell: int) -> int:
+	var idx: int = cell_lookup.get(cell, -1)
+	if idx < 0:
+		return 0
+	return maxi(defs.wood_costs[types[idx]] - delivered[idx], 0)
+
+
+## Deliver up to n wood to this cell. Returns how many it accepted (the
+## hauler keeps the rest). Bumps version — delivery changes the goal
+## sets of both the haul field and the build field.
+func deliver(cell: int, n: int) -> int:
+	var idx: int = cell_lookup.get(cell, -1)
+	if idx < 0:
+		return 0
+	var accepted := mini(remaining_delivery(cell), n)
+	if accepted > 0:
+		delivered[idx] += accepted
+		version += 1
+	return accepted
+
+
+## Materials complete: work may begin (the "awaiting materials" state
+## this class always promised — see header).
+func is_buildable(cell: int) -> bool:
+	var idx: int = cell_lookup.get(cell, -1)
+	return idx >= 0 and delivered[idx] >= defs.wood_costs[types[idx]]
+
+
+## Wood sitting in the blueprint at this cell — read it BEFORE cancel so
+## the sim can refund it as ground items (materials never vanish).
+func delivered_at(cell: int) -> int:
+	var idx: int = cell_lookup.get(cell, -1)
+	return delivered[idx] if idx >= 0 else 0
+
+
+## Cells still owed materials — the haul field's goals.
+func delivery_goals() -> PackedInt32Array:
+	var goals := PackedInt32Array()
+	for i: int in cells.size():
+		if delivered[i] < defs.wood_costs[types[i]]:
+			var _e: bool = goals.push_back(cells[i])
+	goals.sort()
+	return goals
 
 
 ## Material of the blueprint at this cell (0 if none) — read it BEFORE
@@ -75,11 +121,11 @@ func cancel(cell: int) -> bool:
 ## the blueprint finishes (and removes it), or STRUCT_NONE otherwise.
 func add_work(cell: int, seconds: float) -> int:
 	var idx: int = cell_lookup.get(cell, -1)
-	if idx < 0:
+	if idx < 0 or delivered[idx] < defs.wood_costs[types[idx]]:
 		return SimWorld.STRUCT_NONE
 	work_done[idx] += seconds
 	var type := int(types[idx])
-	var required: float = WORK_SECONDS[type]
+	var required: float = defs.work_seconds[type]
 	if work_done[idx] < required:
 		return SimWorld.STRUCT_NONE
 	_remove(idx)
@@ -100,7 +146,8 @@ func frontier_goals(world: SimWorld) -> PackedInt32Array:
 	_refresh_frontier(world)
 	var goals := PackedInt32Array()
 	for cell: int in _frontier:
-		var _e: bool = goals.push_back(cell)
+		if is_buildable(cell):  # awaiting-materials cells route haulers, not builders
+			var _e: bool = goals.push_back(cell)
 	goals.sort()  # dictionary order isn't contractual; determinism is
 	return goals
 
@@ -110,9 +157,15 @@ func is_frontier(world: SimWorld, cell: int) -> bool:
 	return _frontier.has(cell)
 
 
+## Workable frontier jobs: frontier cells whose materials are complete
+## (build capacity for the crowding input).
 func frontier_count(world: SimWorld) -> int:
 	_refresh_frontier(world)
-	return _frontier.size()
+	var n := 0
+	for cell: int in _frontier:
+		if is_buildable(cell):
+			n += 1
+	return n
 
 
 func _refresh_frontier(world: SimWorld) -> void:
@@ -214,10 +267,12 @@ func _remove(idx: int) -> void:
 		types[idx] = types[last]
 		materials[idx] = materials[last]
 		work_done[idx] = work_done[last]
+		delivered[idx] = delivered[last]
 		workers[idx] = workers[last]
 		cell_lookup[cells[idx]] = idx
 	var _e1: int = cells.resize(last)
 	var _e2: int = types.resize(last)
 	var _e5: int = materials.resize(last)
 	var _e3: int = work_done.resize(last)
+	var _e6: int = delivered.resize(last)
 	var _e4: int = workers.resize(last)

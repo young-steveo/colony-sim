@@ -55,6 +55,37 @@
 			]
 		},
 		{
+			"id": "chop",
+			"bucket": 1,
+			"weight": 1.0,
+			"execution": "chop",
+			"considerations": [
+				{
+					"input": "chop_distance",
+					"input_max": 400.0,
+					"curve": { "type": "poly", "m": -1.0, "k": 1.0, "b": 1.0, "c": 0.0 }
+				}
+			]
+		},
+		{
+			"id": "haul",
+			"bucket": 1,
+			"weight": 1.0,
+			"execution": "haul",
+			"considerations": [
+				{
+					"input": "wood_distance",
+					"input_max": 400.0,
+					"curve": { "type": "poly", "m": -1.0, "k": 1.0, "b": 1.0, "c": 0.0 }
+				},
+				{
+					"input": "haul_target_distance",
+					"input_max": 400.0,
+					"curve": { "type": "poly", "m": -1.0, "k": 1.0, "b": 1.0, "c": 0.0 }
+				}
+			]
+		},
+		{
 			"id": "build",
 			"bucket": 1,
 			"weight": 1.0,
