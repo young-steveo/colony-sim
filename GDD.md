@@ -984,9 +984,85 @@ coast seam paint their own cell. Ripples stamp only interior + variant
 cells; a ripple on an edge cell wallpapers down the whole coastline
 (one sheet cell per mask). Screenshot-mode gained `--cam=x,y`.
 
-**Queued:** Stephen's hand pass over the seven
-generated sheets; THE VERB TEST VERDICT (everything the slice needs is
-now in the build); weighted-cost flow fields when difficult terrain
+### The material cycle — verb test re-sequenced (July 25, 2026)
+
+Stephen, after painting: "Building feels shallow. I can conjure wooden
+walls from the ether. I can't judge the verbs until they are proper."
+He's right, and precisely: the verb was never "paint walls" — it's
+"designate → the colony responds," and half of that verb is a pawn
+carrying wood it chopped. Costless building also falsifies the
+palette's premise (swatches = structure × *material* only means
+something when materials are decisions). So the verdict moves behind
+material reality — and the GDD predicted this from three directions:
+hauling was already the step-primitive library's named third consumer,
+the slice's own verbs (forage, hunt) require items, and the data-first
+audit commitment comes due "no later than the resources/hauling era."
+That era is now.
+
+**The "proper" boundary, written down so it can't slide** (the scary
+test attracts prerequisites; this line may not move): *the verb is
+proper when a wall costs wood that a pawn actually carried.* Chop a
+tree → wood exists as the game's first item entity → blueprint
+declares a cost → pawns haul from wherever logs lie → build. NOT in
+the boundary: stockpiles (the signpost's job), multi-resource economy,
+scarcity tuning, winter. If the verdict wants one more thing after
+hauling lands, that's the slide — hear the alarm.
+
+Riders: conjuring survives as a dev tool (future creative mode);
+marble/granite need no quarry — they become recovered-not-understood
+in the cabinet, grayed with their story (tech-as-archaeology answers
+"why can't I build marble yet" better than mining would). Stephen's
+mandate for the design session: **there might be a lot of delightful
+UI in that cycle, and we need to capture it.**
+
+### Brainstorm prep — the material cycle (recorded ahead of the session)
+
+**The delight inventory** — where UI joy might live in
+chop → yield → carry → build, seeded for the session:
+
+- *Designating the chop.* Open question with teeth: is "chop" a swatch?
+  If work orders live in the palette (a Work kit next to the Homestead
+  kit), designation inherits every tool we just built — line strokes,
+  patterns, eyedropper ("more of that one" pointed at a tree). One
+  interaction grammar for build AND orders would be a genre first.
+- *The fall.* Tree-felling is a canonical juice moment (the thud, the
+  stump, logs scattering). First screen-shake candidate in the project.
+- *Visible labor.* Logs lying where they fell make work legible at a
+  glance; a pawn rendered *carrying* a log reads from across the map
+  (the hands mount from the tile-stack model, first use). "Watching the
+  little guys" gains its first real narrative beat: she's bringing wood
+  home.
+- *Staged materials.* Logs accumulating at the blueprint before build
+  starts — the stakes-and-string vision already imagined "staged
+  materials progressively becoming the preview." The ghost could fill
+  as materials arrive: cost display AS the building.
+- *Legible waiting.* The blueprint that isn't progressing must say why
+  (no wood / nobody free to haul) — the legibility contract applied to
+  logistics, and the answer to the genre's "why isn't anyone building
+  my wall" rage.
+- *Knowing what you have.* Does the slice need a resource counter HUD
+  at all, or is seeing logs on the ground the on-theme answer at
+  4-settler scale? (No Spreadsheet-The-Game™ starts here.)
+
+**Architecture agenda:** items as the first located-entity pool
+(packed arrays; the anonymity seam says logs are anonymous until
+someone cares — but they're *located*: tile | structure mount | hands,
+per the tile stack). Claim discipline for items (two haulers, one log —
+construction crews already solved this shape). Hauling as the
+activity-machine third consumer → extract the step-primitive library
+(move-to, pick-up, deposit) as scheduled. Blueprint costs land in
+structures.json, not constants — the data audit comes due with this
+era and structure_defs.gd's own comment has been waiting for it
+("work cost, build cost join here"). Trees: new flora entity or
+bushes generalized; 16×32 sprites pull Y-sorting/canopy-occlusion
+forward (known cost, recorded at the art verdict). Worldgen: forests
+from the existing rainfall + soil-depth fields. Item-finding: the
+food flow field pattern, pointed at logs.
+
+**Queued:** the material-cycle design session (above), then items +
+hauling implementation, then Stephen's hand pass over the seven
+generated sheets, then THE VERB TEST VERDICT — on a proper verb;
+weighted-cost flow fields when difficult terrain
 lands; tooltip + pawn card per design spec sheet 04; m6x11 font;
 palette micro-animations (want icon frames).
 
