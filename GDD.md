@@ -1104,13 +1104,49 @@ Run against the prep's delight inventory. Settled:
 **Open threads for later rounds:** the build-viz take; the plan-tool
 UI shape (not swatches — then what?); the order radial's verb list.
 
-**Queued:** items + hauling sim skeleton (trees, chop plans, log
-items, haul activity, costs in structures.json — design-stable under
-all open threads); build-mode visibility fix; then Stephen's hand pass
-over the seven generated sheets, then THE VERB TEST VERDICT — on a
-proper verb; weighted-cost flow fields when difficult terrain
-lands; tooltip + pawn card per design spec sheet 04; m6x11 font;
-palette micro-animations (want icon frames).
+### Material cycle, round 2 — the sim skeleton lands (July 25, 2026)
+
+Same evening as round 1. The verb is proper: walls cost wood a pawn
+actually carried. Items landed as the first located-entity pool
+(per-item stack size in items.json — wood stacks at 6, small on
+purpose: a big lumber operation should LOOK big); trees generate in
+grove-clumped noise on grass, walkable v1 (blocking trees wait on
+weighted-cost fields or worldgen connectivity guarantees), and they
+block construction — you clear the forest before you build in it.
+Chop designations are plans; felling scatters 4-8 wood; haulers carry
+full stacks (carry capacity = stack size, one knob until tuning says
+otherwise); blueprints gained the awaiting-materials state their
+header always promised, with costs and work seconds in
+structures.json (the data-first audit paid on schedule). Wood never
+vanishes: cancel refunds to the ground, completed walls displace
+stacks, an interrupted hauler drops the load where they stand — the
+pile is the story of the interruption. Placeholder render: trunk +
+canopy quads (marked canopies for plans), ground stacks whose width
+IS the count, cargo riding above hauling pawns. Chop input is an
+explicitly-placeholder C-key mode pending the plan-tool design round.
+112 tests, end-to-end deterministic.
+
+**The lesson worth a principle-sized asterisk:** the material cycle
+made field churn constant (every pickup, every deliver bumped a
+version), every rebuild is a 132 ms GDScript Dijkstra on 256², and
+the deterministic install-wait turned catch-up ticks into a death
+spiral — fps 1 with four pawns. The fix was semantic, not heroic:
+flow fields care about GOAL SETS, not stack counts, so goal-set
+versions now live apart from content versions and rebuilds happen
+only when a goal is born or dies. fps 120, sim tick 0.31 ms with the
+full cycle live. Standing debt, recorded: the 132 ms build cost is
+the ceiling on field-hungry features (Performance Is a Goal — the
+architecture absorbed this one, but the next field consumer should
+look at build cost first, not last).
+
+**Queued:** build-mode visibility fix (palette bar should exist only
+in build mode — drift vs our own spec); build-viz brainstorm (staged
+materials as the preview); plan-tool UI design round; Stephen's hand
+pass over the seven generated sheets + tree/log/carry art + chop and
+carry animations; then THE VERB TEST VERDICT — on a proper verb;
+weighted-cost flow fields when difficult terrain lands; tooltip +
+pawn card per design spec sheet 04; m6x11 font; palette
+micro-animations (want icon frames).
 
 ## 14. References
 
