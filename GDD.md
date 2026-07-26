@@ -1059,10 +1059,56 @@ forward (known cost, recorded at the art verdict). Worldgen: forests
 from the existing rainfall + soil-depth fields. Item-finding: the
 food flow field pattern, pointed at logs.
 
-**Queued:** the material-cycle design session (above), then items +
-hauling implementation, then Stephen's hand pass over the seven
-generated sheets, then THE VERB TEST VERDICT — on a proper verb;
-weighted-cost flow fields when difficult terrain
+### Material-cycle session, round 1 — Stephen's gut takes (July 25, 2026)
+
+Run against the prep's delight inventory. Settled:
+
+- **Chop is not a swatch — plans vs orders instead.** The
+  frequency-variety split resurfaced as player vocabulary: a **plan**
+  is standing intent, batched and cheap ("this region's trees get
+  cut" — and blueprints were always plans in this sense: painting
+  creates plans); an **order** is directed and immediate (director
+  mode: "cut *that* tree" — it needs cutting). Settlers stay
+  autonomous; orders ride a strong curve. Maps 1:1 onto the AI's
+  priority buckets (plans → normal work bucket, orders → high
+  bucket) and onto the radial reservation (orders are the stable
+  director verb set). Plan designation may borrow the stroke tools
+  (drag, line) without living in the build palette.
+- **Build UI is modal — implementation drift caught.** The GDD
+  already says build mode is an explicit state; the always-visible
+  palette bar is a bug against our own spec. Fix queued.
+- **The fall is confirmed juice** — tree tips, logs spill.
+  Falling-tree-as-hazard filed to threat ecology's later-pile
+  ("How You Died: a tree").
+- **Animation scope:** chop cycle needed; carry may come free via the
+  hands mount (walk cycle + overlaid log) — whether that reads at
+  16×16 or needs an arms-up row is Stephen's art-program experiment.
+- **Build-process visualization needs its own brainstorm** (RimWorld's
+  faded-box-plus-progress-blocks is the foil). Seed: the truth has two
+  channels — delivery (0/N logs staged at site), then work. Our
+  instinct: show materials as materials, logs visibly becoming the
+  wall (stakes-and-string's "staged materials become the preview").
+- **Hover tooltip confirmed** (design spec sheet 04); the material
+  cycle gives it its first real job — legible waiting.
+- **Ownership — Stephen's catch: "our area" is a real design surface.**
+  A tree felled at the map corner isn't "ours" yet. Resolution
+  proposed and liked: **"ours" is downstream of declare** — wood in a
+  declared Warehouse is counted; the resource counter is *earned
+  infrastructure*, arriving with the signpost era (before storage
+  exists you count logs by looking at them). The anti-spreadsheet
+  question resolves diegetically: the counter shows what the colony
+  can see, not what god knows. "Home region" has future clients
+  (raider theft, intruder moods) but v1 hauling needs no territory —
+  only the counter does, so counting waits for declare. Clean cut.
+
+**Open threads for later rounds:** the build-viz take; the plan-tool
+UI shape (not swatches — then what?); the order radial's verb list.
+
+**Queued:** items + hauling sim skeleton (trees, chop plans, log
+items, haul activity, costs in structures.json — design-stable under
+all open threads); build-mode visibility fix; then Stephen's hand pass
+over the seven generated sheets, then THE VERB TEST VERDICT — on a
+proper verb; weighted-cost flow fields when difficult terrain
 lands; tooltip + pawn card per design spec sheet 04; m6x11 font;
 palette micro-animations (want icon frames).
 
