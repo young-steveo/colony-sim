@@ -1,8 +1,8 @@
 class_name Items
 extends RefCounted
 ## Ground item stacks: the anonymity seam applied to stuff. A stack is
-## anonymous quantity located on a tile (items in a pawn's hands live on
-## the pawn — ActorPool carry arrays; items never become tile-state).
+## anonymous quantity located on a tile (items in a settler's hands live on
+## the settler — ActorPool carry arrays; items never become tile-state).
 ## One stack per tile in v1: same-type spawns merge up to the def's stack
 ## size and overflow scatters to nearby tiles, so a felled tree's yield
 ## spreads into a visible pile of piles, not an invisible tall number.
@@ -118,7 +118,7 @@ func take(cell: int, n: int) -> int:
 
 
 ## A blocking structure completed on this cell: push its stack to the
-## nearest walkable neighbor (the pawn-displacement rule, applied to
+## nearest walkable neighbor (the settler-displacement rule, applied to
 ## stuff — items under a wall would be a lie the player can't see).
 func displace_from(world: SimWorld, cell: int) -> void:
 	var idx: int = cell_lookup.get(cell, -1)

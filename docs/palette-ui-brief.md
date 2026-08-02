@@ -26,7 +26,7 @@ up a color. Sweep a wall across a hillside like a brush stroke. Steal a
 material straight off the map with an eyedropper. Undo a stroke like it
 never happened (cancel tool). Your colonists are the ones who make the
 painting real — your strokes appear as translucent "ghost" blueprints, and
-pawns wander over and build them into solid matter while you keep
+settlers wander over and build them into solid matter while you keep
 painting.
 
 Aseprite meets RimWorld. MS Paint energy, Dwarf Fortress consequences.
@@ -67,7 +67,7 @@ around them is wide open:
   convention — deliberately *not* a separate line tool/mode).
 - **Ghosts**: strokes appear instantly as translucent blueprints in the
   world (already implemented — cool blue tint over the real structure
-  art). Pawns build them over time. The UI never blocks on the sim.
+  art). Settlers build them over time. The UI never blocks on the sim.
 - **Keyboard-first**: number keys or similar should hot-swap swatches;
   tools deserve single-key binds. Mouse+keyboard is the primary target;
   no touch, no gamepad for now.
@@ -141,8 +141,8 @@ So make it explicit. This engagement is two layers:
 
 Three secondary surfaces already exist in-game as raw debug text; sketch
 each once, only to prove the foundations generalize — not as finished
-designs: the **HUD status line** (seed, pawn count, speed, zoom), the
-**pawn inspection card** (name, need bars, current action + reasoning),
+designs: the **HUD status line** (seed, settler count, speed, zoom), the
+**settler inspection card** (name, need bars, current action + reasoning),
 and a **tooltip**.
 
 Explicitly out of scope: menus, settings, alerts/notifications, title
@@ -166,7 +166,7 @@ define here are what they'll be built from later.
 
 ## What NOT to redesign
 
-The world rendering, the ghost-blueprint look, the pawns, the sim. The
+The world rendering, the ghost-blueprint look, the settlers, the sim. The
 palette's *contents* are data-driven and will change; design the
 container, not the inventory. And the four tool glyphs are drawn and
 loved — build around them.

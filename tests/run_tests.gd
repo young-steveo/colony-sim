@@ -191,7 +191,7 @@ func _test_ai() -> void:
 	var mid := hunger_con.score(0.5)
 	_check(mid > 0.2 and mid < 0.3, "half hunger scores quadratically (~0.25)")
 
-	# Behavior: a hungry pawn near food decides to eat and its hunger rises.
+	# Behavior: a hungry settler near food decides to eat and its hunger rises.
 	var sim := Simulation.new(7, 96, 96)
 	_check(sim.bushes.cells.size() > 5, "bushes scattered on grass (%d)" % sim.bushes.cells.size())
 	_check(sim.food_field != null, "food flow field built")
@@ -213,8 +213,8 @@ func _test_ai() -> void:
 				if sim.actors.needs[rest_idx][i] > prev_rest[i]:
 					slept = true
 			prev_rest = sim.actors.needs[rest_idx].duplicate()
-	_check(ate, "hungry pawns found food and ate (%d berries)" % sim.bushes.consumed_total)
-	_check(slept, "tired pawns slept (rest rose)")
+	_check(ate, "hungry settlers found food and ate (%d berries)" % sim.bushes.consumed_total)
+	_check(slept, "tired settlers slept (rest rose)")
 	var in_range := true
 	for nd: int in sim.defs.needs.size():
 		for i: int in sim.actors.count:
@@ -310,21 +310,21 @@ func _test_building() -> void:
 	_check(built_bed, "bed built")
 	_check(not sim_a.world.is_walkable(ox, oy), "built wall blocks movement")
 	_check(sim_a.world.is_walkable(ox + 2, oy + 4), "built door stays walkable")
-	_check(slept_on_bed, "a tired pawn slept on the bed")
+	_check(slept_on_bed, "a tired settler slept on the bed")
 
 	var on_walkable := true
 	for i: int in sim_a.actors.count:
 		var p := sim_a.actors.positions[i]
 		if not sim_a.world.is_walkable(floori(p.x), floori(p.y)):
 			on_walkable = false
-	_check(on_walkable, "no pawn ended up inside a wall")
+	_check(on_walkable, "no settler ended up inside a wall")
 	_check(
 		sim_a.actors.positions == sim_b.actors.positions
 			and sim_a.world.structures == sim_b.world.structures,
 		"building run fully deterministic"
 	)
 
-	# Crowding: one door among 40 idle pawns must draw a small crew, not
+	# Crowding: one door among 40 idle settlers must draw a small crew, not
 	# the whole colony.
 	var sim_c := Simulation.new(23, 96, 96)
 	sim_c.spawn_actors(40)
@@ -409,7 +409,7 @@ func _test_building() -> void:
 		"solid 5x5 built at a working pace, 4500 ticks (%d blueprints left)"
 			% sim_d.blueprints.cells.size()
 	)
-	_check(pinned_rest == 0, "no pawn ever pinned at zero rest (sleep deadlock)")
+	_check(pinned_rest == 0, "no settler ever pinned at zero rest (sleep deadlock)")
 	var solid := true
 	for dx: int in 5:
 		for dy: int in 5:
@@ -422,7 +422,7 @@ func _test_building() -> void:
 		var p := sim_d.actors.positions[i]
 		if not sim_d.world.is_walkable(floori(p.x), floori(p.y)):
 			d_walkable = false
-	_check(d_walkable, "no pawn entombed in the block")
+	_check(d_walkable, "no settler entombed in the block")
 	_check(
 		sim_d.actors.positions == sim_e.actors.positions
 			and sim_d.world.structures == sim_e.world.structures,
@@ -546,7 +546,7 @@ func _test_material_cycle() -> void:
 
 
 ## Two identical sims run the full loop; the verb is proper when a wall
-## costs wood a pawn actually carried — and it must be deterministic.
+## costs wood a settler actually carried — and it must be deterministic.
 func _material_cycle_integration() -> void:
 	var sim_a := Simulation.new(41, 96, 96)
 	var sim_b := Simulation.new(41, 96, 96)
@@ -619,7 +619,7 @@ func _material_cycle_integration() -> void:
 	for cell: int in sim_a.world.width * sim_a.world.height:
 		if sim_a.world.structure_at_cell(cell) == SimWorld.STRUCT_WALL:
 			walls += 1
-	_check(sim_a.trees.felled_total > 0, "pawns felled planned trees (%d)" % sim_a.trees.felled_total)
+	_check(sim_a.trees.felled_total > 0, "settlers felled planned trees (%d)" % sim_a.trees.felled_total)
 	_check(walls > 0, "walls built from hauled wood (%d)" % walls)
 	_check(work_samples > 0, "settlers observed at work (%d samples)" % work_samples)
 	_check(

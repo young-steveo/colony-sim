@@ -1,9 +1,9 @@
 class_name Blueprints
 extends RefCounted
-## Construction designations: the player paints blueprints, pawns build
+## Construction designations: the player paints blueprints, settlers build
 ## them. A blueprint is a world entity with a lifecycle — placed, awaiting
 ## materials (haulers deliver its wood cost), buildable, worked on
-## (possibly by several pawns across many ticks), completed into a
+## (possibly by several settlers across many ticks), completed into a
 ## structure. The hauling seam this header always promised is live:
 ## delivery state gates work, nothing else changed shape.
 

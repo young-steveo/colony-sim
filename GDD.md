@@ -167,15 +167,15 @@ join a world already in motion.
 
 **Director mode (replaces drafting):** player orders are input to the same
 utility-AI system as hunger and fear — an extremely heavy consideration, not a
-separate control state. "Defend this spot" scores enormously; a pawn on fire
-still flees. Pawns *really try* to listen but remain autonomous. Cowardice and
+separate control state. "Defend this spot" scores enormously; a settler on fire
+still flees. Settlers *really try* to listen but remain autonomous. Cowardice and
 disobedience become emergent story, not scripted failure.
 
 **The legibility contract (critical):** disobedience is only fun if the player
 can always see *why* ("too scared to hold position"). The failure mode — "I
-told the idiot pawn to guard this tile, he ran away, must be a bug" — is the
+told the idiot settler to guard this tile, he ran away, must be a bug" — is the
 single biggest UX risk in the design. If disobedience isn't legible, director
-mode makes the game feel broken. Clicking any pawn shows what they're doing,
+mode makes the game feel broken. Clicking any settler shows what they're doing,
 what they're trying to do, and why.
 
 **Vocabulary (locked July 2026):** three tiers. *Actor* — engine class,
@@ -240,7 +240,7 @@ details via find-the-fun; **[bet]** unproven design gamble with fallback;
 **[later]** lofty ideal, built only if/when the fun demands it.
 
 ### Agent AI — Infinite Axis Utility System [committed — v1 running]
-Pawns score possible actions across weighted considerations (needs, fears,
+Settlers score possible actions across weighted considerations (needs, fears,
 personality, orders) and act on the winner. Player orders enter as heavy
 considerations (see Director mode). Pairs naturally with Dijkstra/flow maps as
 the spatial arm of utility scoring ("3× food map + 1× safety map, roll
@@ -254,8 +254,8 @@ consideration curve outputs → Dave Mark compensation (`1 − 1/n`) → × acti
 weight → × commitment bonus (incumbent ×1.1, anti-flip-flop). Weights are
 priority tiers, not tuning knobs; personality will live in stats first,
 curves second, weights never. Our scale adaptations: **priority buckets**
-above the flat menu (a starving pawn can never lose "eat" to "haul" through
-curve luck), **staggered decisions** (per-pawn offset, ~every 0.5 s),
+above the flat menu (a starving settler can never lose "eat" to "haul" through
+curve luck), **staggered decisions** (per-settler offset, ~every 0.5 s),
 **parametric curves as plain-data JSON** (`content/actors/ai.json` — mods ride the
 same rails; no editor-drawn Curve resources), and **shared flow fields as
 spatial considerations** (the food field answers "distance to food" for
@@ -350,7 +350,7 @@ watch the actor budget).
 Kill the genre's stockpile-painting ritual. Draw four walls and a door; the
 game recognizes an enclosure as a **building** (flood-fill detection — cheap,
 proven tech). A **signpost** appears outside — a diegetic UI element that
-literally exists in the world; a pawn hammering it in is a juice moment. Click
+literally exists in the world; a settler hammering it in is a juice moment. Click
 the sign, declare what the building *is*: "Warehouse," "Walk-In Freezer,"
 "Tiffany's Bedroom," each a preset bundle of storage/usage defaults. Fenced
 areas get the same treatment (pen, garbage dump, graveyard). In the real world
@@ -470,18 +470,18 @@ the fun demands it; must not become a spreadsheet.
 
 ### Internal economy [later] [bet — era-gated]
 Reject the genre's unexamined communist default *at scale*: at 100 colonists it
-would be fun if pawns had trades and businesses — the blacksmith selling
+would be fun if settlers had trades and businesses — the blacksmith selling
 makeshift armor to neighbors, the hunter selling a deer to the butcher, the
 butcher selling fresh meat. Story-rich: price-gouging during famine, class
 resentment, theft with a motive, the market as social institution.
 **The corpse on this road:** Dwarf Fortress HAD an internal economy (coins,
-wages, rent, shops) and removed it — it failed because pawn income was
+wages, rent, shops) and removed it — it failed because settler income was
 disconnected from player-mandated labor (dwarves earned nothing coherent,
 couldn't pay rent on rooms the player built, spiraled into debt hell). The god
-hand and the market fought over the same pawns. **Our answer is the era
+hand and the market fought over the same settlers. **Our answer is the era
 structure:** at family scale (4–10), everything shared — communism is correct
 there. The economy arrives exactly as the player's control abstracts into
-roles/policies: player delegation and pawn economic autonomy are the same
+roles/policies: player delegation and settler economic autonomy are the same
 dial, phased together, never coexisting at full strength. The commune-gets-a-
 market transition is itself an era story beat — civilization rebuilding in
 miniature, the game's literal theme. Guardrail (Buffalo's Teeth Principle): an
@@ -569,7 +569,7 @@ engineering-constitutional.
    transitions *between* activities; an activity (the execution of an action)
    is an explicit engine-side phase machine that owns transitions *within*
    itself. Three exits only — DONE, FAILED, INTERRUPTED — and every exit path
-   (including preemption, rally, rescue) releases pawn-local state through a
+   (including preemption, rally, rescue) releases settler-local state through a
    single exit hook, so claims and timers never leak between activities.
    **Activities never weigh alternatives**: a phase transition may read the
    activity's own progress (the need it restores, the claim it holds), never
@@ -579,7 +579,7 @@ engineering-constitutional.
    shared step primitives (follow-field, move-to, wait); free-form state
    graphs are reserved for the genuinely graph-shaped (combat, fleeing).
    State lives in the pool as packed arrays (phase, phase_timer); machines
-   are code, no per-pawn objects, no allocation on activity start. Exists to
+   are code, no per-settler objects, no allocation on activity start. Exists to
    kill the "if state and mode and not flag and..." nesting rot before actor
    detail accretes — new detail lands as a new phase or step, not a new
    boolean.
@@ -603,7 +603,7 @@ engineering-constitutional.
 2D top-down pixel art. **Color palette: Resurrect 64 by Kerrie Lake**
 (https://lospec.com/palette-list/resurrect-64) — codified in
 `render/palette.gd`; all rendered color draws from it. **Grid: 16×16 tiles
-with 16×16 pawn sprites** — chibi proportion (oversized head for readable
+with 16×16 settler sprites** — chibi proportion (oversized head for readable
 expression), 4-direction, contained in the tile square, feet-anchored at the
 sim position. Deliberate scope verdict (July 24, 2026), superseding the
 earlier 16×32 Stardew proportion: small team, content-heavy game — the
@@ -649,8 +649,8 @@ sims arrive if/when the fun demands them. The slice is sacred.
 
 **Success criteria (not "is it complete"):**
 1. Is painting/placing delightful?
-2. Is watching delightful — do pawns read as alive?
-3. Is pawn behavior legible — does the player always know *why*?
+2. Is watching delightful — do settlers read as alive?
+3. Is settler behavior legible — does the player always know *why*?
 4. Does the 300-actor stress test hold? (Milestone: ~300 dumb-but-moving
    actors, centralized manager, before deep systems are built on top. If
    GDScript can't, we learn it in month two, not year two.)
@@ -664,15 +664,15 @@ Failing 1–2 triggers the Delightful Verb kill criterion conversation.
 1. **Scope is the existential risk.** The systems list in this doc is a decade
    of work. Mitigation: scope doctrine above; the slice is sacred; ideals are
    hypotheses.
-2. **The 100-colonist bet** compounds three unproven things: pawn count ×
-   AI depth × GDScript. Songs of Syx has scale without per-pawn depth;
+2. **The 100-colonist bet** compounds three unproven things: settler count ×
+   AI depth × GDScript. Songs of Syx has scale without per-settler depth;
    RimWorld has depth and chokes at 30. We claim a middle nobody's cleanly
    hit. Mitigation: stress-test milestone, time-sliced AI, sim LOD, Rust
    hatch.
 3. **Killboxes and mood spirals defeated both Tynan and Toady.** Our answers
    (threat ecology; drama-not-DPS) are directionally right and unproven.
    Recorded as bets with fallbacks, not solved problems.
-4. **Director mode is a promise.** Disobedient pawns + invited player intent =
+4. **Director mode is a promise.** Disobedient settlers + invited player intent =
    rage, unless disobedience is always legible. If we can't show *why*, the
    game feels broken. Legibility is load-bearing.
 5. **Story-per-hour honesty.** Emergent storytelling is mostly logistics with
@@ -688,8 +688,8 @@ Failing 1–2 triggers the Delightful Verb kill criterion conversation.
 - Roles/policies/delegation design for large-colony management (find-the-fun
   at build time).
 - World map granularity and the travel/expedition model.
-- ~~Grid size and pawn resolution~~ — resolved: 16×16 tiles, 16×16 chibi
-  pawns (see Presentation). Art style/ramps/animation still need their
+- ~~Grid size and settler resolution~~ — resolved: 16×16 tiles, 16×16 chibi
+  settlers (see Presentation). Art style/ramps/animation still need their
   session.
 - Children/aging — later-roadmap candidate.
 - Taming/livestock — later.

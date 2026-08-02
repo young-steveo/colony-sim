@@ -1,6 +1,6 @@
 class_name CarryRenderer
 extends MultiMeshInstance2D
-## Placeholder carried-cargo overlay: a small quad riding above any pawn
+## Placeholder carried-cargo overlay: a small quad riding above any settler
 ## with something in hand — "she's bringing wood home" readable from
 ## across the map. First use of the tile-stack hands mount; becomes real
 ## sprite work with the carry-animation pass.

@@ -1,6 +1,6 @@
 class_name AiContext
 extends RefCounted
-## Everything a pawn's decision and execution can read, bundled once per
+## Everything a settler's decision and execution can read, bundled once per
 ## tick by Simulation. Keeps ActorPool free of a Simulation reference and
 ## makes the brain's entire world-facing surface explicit — the sim-core
 ## equivalent of "AI acts only on its memory."
@@ -20,7 +20,7 @@ var wood_field: FlowField  # ground wood stacks
 var haul_field: FlowField  # blueprints awaiting materials
 var tick := 0
 var build_capacity := 0  # workable frontier jobs right now (live)
-# Sorted field distances of every pawn currently on the build action —
+# Sorted field distances of every settler currently on the build action —
 # lets the crowding input rank "how many builders are closer than me".
 var builder_distances := PackedInt32Array()
-var occupied: Dictionary = {}  # cell -> true for every pawn position at tick start
+var occupied: Dictionary = {}  # cell -> true for every settler position at tick start

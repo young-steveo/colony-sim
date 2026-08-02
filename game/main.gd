@@ -268,7 +268,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("shelf_next"):
 		palette.cycle_shelf()
 	elif event.is_action_pressed("ui_cancel"):
-		# Esc: put the brush down; pointer mode selects pawns.
+		# Esc: put the brush down; pointer mode selects settlers.
 		chop_plan_mode = false
 		if palette.tool == PaletteBar.Tool.POINTER:
 			selected_id = -1
@@ -335,7 +335,7 @@ func _handle_mouse(event: InputEvent) -> void:
 			PaletteBar.Tool.EYEDROPPER:
 				_eyedrop(cell)
 			PaletteBar.Tool.POINTER:
-				var picked := _pick_pawn(tile_pos)
+				var picked := _pick_settler(tile_pos)
 				if picked >= 0:
 					selected_id = sim.actors.ids[picked]
 				elif mb.shift_pressed:
@@ -443,8 +443,8 @@ func _update_paint_ui() -> void:
 	build_overlay.update_state(hover, line, hover_color, cam.zoom.x)
 
 
-## Nearest pawn within ~a tile of the click, or -1.
-func _pick_pawn(tile_pos: Vector2) -> int:
+## Nearest settler within ~a tile of the click, or -1.
+func _pick_settler(tile_pos: Vector2) -> int:
 	var best := -1
 	var best_dist := 0.8
 	for i: int in sim.actors.count:
@@ -588,7 +588,7 @@ func _update_selection() -> void:
 	selection_ring.visible = true
 
 	var lines: Array[String] = []
-	lines.append("pawn #%d | speed %.1f" % [pool.ids[idx], pool.speeds[idx]])
+	lines.append("settler #%d | speed %.1f" % [pool.ids[idx], pool.speeds[idx]])
 	for nd: int in sim.defs.needs.size():
 		var v := pool.needs[nd][idx]
 		lines.append("%-8s %s %3d%%" % [sim.defs.needs[nd].id, _bar(v), int(v * 100.0)])

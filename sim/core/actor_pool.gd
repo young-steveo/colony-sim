@@ -5,10 +5,10 @@ extends RefCounted
 ## per-actor _process.
 ##
 ## Behavior = utility AI (see AiDefs for the scoring model). Decisions are
-## staggered — each pawn re-decides every DECIDE_INTERVAL ticks, offset by
+## staggered — each settler re-decides every DECIDE_INTERVAL ticks, offset by
 ## its id, plus immediately when its current action completes — and are
-## recorded per pawn in last_scores so the inspection panel can always
-## answer "what is this pawn doing and why" (the legibility contract).
+## recorded per settler in last_scores so the inspection panel can always
+## answer "what is this settler doing and why" (the legibility contract).
 ##
 ## A player rally command (responding == 1) overrides the brain until
 ## arrival — director-mode-lite; later, orders become heavy considerations
@@ -18,17 +18,17 @@ extends RefCounted
 ## transitions BETWEEN activities; an activity owns transitions WITHIN
 ## itself. Each execution is a small phase machine — enter via
 ## _start_action, tick returns ACT_RUNNING/ACT_DONE/ACT_FAILED, and every
-## way out (completion, failure, preemption, rally, rescue) releases pawn
+## way out (completion, failure, preemption, rally, rescue) releases settler
 ## state through the single exit hook (_exit_action). An activity may
 ## finish itself (its success criterion can read the need it restores) but
-## it never weighs alternatives — "should this pawn be doing something
+## it never weighs alternatives — "should this settler be doing something
 ## else" is solely the brain's question. The moment a phase transition
 ## starts reading needs, the brain has leaked into the body: stop.
 
 const ARRIVE_DISTANCE := 0.05
 # Wandering is a stroll, not a random walk: legs keep roughly the current
 # heading (bounded steering turns, never a snap reversal unless walls force
-# one), pawns pause between legs, and they amble below task speed.
+# one), settlers pause between legs, and they amble below task speed.
 const WANDER_LEG_MIN := 2.0
 const WANDER_LEG_MAX := 6.0
 const WANDER_TURN := PI * 0.45  # typical steering range per leg (~±81°)
@@ -40,13 +40,13 @@ const JITTER := 0.35
 const DECIDE_INTERVAL := 15
 const COMMITMENT_BONUS := 1.1
 # A higher-bucket action must clear this to preempt lower buckets. Tuned so
-# an eating pawn keeps its meal until roughly three-quarters fed instead of
+# an eating settler keeps its meal until roughly three-quarters fed instead of
 # wandering off after two bites.
 const BUCKET_CUTOFF := 0.15
 const NO_ACTION := -1
 
 # Activity outcomes: every activity tick returns one of these. RUNNING
-# keeps the pawn; anything else ends the activity through the exit hook
+# keeps the settler; anything else ends the activity through the exit hook
 # (FAILED is DONE that couldn't finish — same cleanup, different story).
 const ACT_RUNNING := 0
 const ACT_DONE := 1
@@ -98,7 +98,7 @@ var carry_count := PackedInt32Array()  # how many of it
 var headings := PackedFloat32Array()  # stroll direction, persists across legs
 var facings := PackedVector2Array()  # unit vector faced: travel direction, or the work when planted
 var needs: Array[PackedFloat32Array] = []
-var last_scores := PackedFloat32Array()  # count * n_actions, row per pawn
+var last_scores := PackedFloat32Array()  # count * n_actions, row per settler
 
 var _spawned_total := 0
 var _n_actions := 0
@@ -137,7 +137,7 @@ func spawn(world: SimWorld, defs: AiDefs, n: int) -> void:
 		var id := _spawned_total
 		_spawned_total += 1
 		var s := SimRng.stream(SimRng.key([world.world_seed, "spawn", id]))
-		# The colony starts as a knot at the map's heart: pawn id takes the
+		# The colony starts as a knot at the map's heart: settler id takes the
 		# id-th walkable cell scanning outward from the center, so spawns
 		# cluster on screen (the camera opens there) without stacking.
 		var cell := _center_spawn_cell(world, id)
@@ -229,7 +229,7 @@ func _decide(ctx: AiContext, i: int) -> void:
 				or action.execution == &"haul"
 		if is_work and ctx.tick < work_cooldowns[i]:
 			# Recently blocked or crowded out: sit this one out briefly so
-			# stale-field churn doesn't freeze pawns mid-route.
+			# stale-field churn doesn't freeze settlers mid-route.
 			last_scores[row + a] = 0.0
 			continue
 		var product := 1.0
@@ -290,10 +290,10 @@ func _input_value(ctx: AiContext, i: int, con: AiDefs.ConsiderationDef) -> float
 		&"build_crowding":
 			# Proximity-ranked crowding: of the builders currently
 			# assigned, how many are CLOSER to the work than me, against
-			# the number of workable frontier jobs? The nearest pawns
+			# the number of workable frontier jobs? The nearest settlers
 			# always rank 0 and take the job; a distant traveler sees
-			# closer pawns saturating capacity and drops out. (Assignment
-			# order alone let far pawns grab slots while the pawn beside
+			# closer settlers saturating capacity and drops out. (Assignment
+			# order alone let far settlers grab slots while the settler beside
 			# the site wandered.) Strict less-than self-excludes: my own
 			# recorded distance equals mine.
 			if ctx.build_capacity == 0 or ctx.blueprint_field == null:
@@ -334,10 +334,10 @@ func _start_action(ctx: AiContext, i: int, action_idx: int) -> void:
 			_wander_enter(ctx, i)
 
 
-## Exit hook: the ONLY place pawn-local activity state is released. Every
+## Exit hook: the ONLY place settler-local activity state is released. Every
 ## way out of an activity — DONE, FAILED, preemption, rally, rescue,
 ## displacement — funnels through here so nothing leaks into the next
-## one. Anything still in the pawn's hands goes to the ground where they
+## one. Anything still in the settler's hands goes to the ground where they
 ## stand (wood never vanishes; a dropped log is a visible story beat).
 func _exit_action(ctx: AiContext, i: int) -> void:
 	phase[i] = 0
@@ -363,8 +363,8 @@ func _set_phase(i: int, p: int) -> void:
 	phase_timer[i] = 0
 
 
-## Inspection-panel label for the pawn's current phase (legibility
-## contract: the player can always see what a pawn is doing and why).
+## Inspection-panel label for the settler's current phase (legibility
+## contract: the player can always see what a settler is doing and why).
 func phase_label(defs: AiDefs, i: int) -> String:
 	if current_action[i] == NO_ACTION:
 		return ""
@@ -417,7 +417,7 @@ func _sleep_tick(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) ->
 	# Prefer not to bed down on someone's construction site — but if
 	# there's no open ground one step away (deep in a painted field),
 	# sleep on the ghost anyway: the occupancy rule defers that cell's
-	# construction, and an unsleepable pawn is a starving deadlock.
+	# construction, and an unsleepable settler is a starving deadlock.
 	var cell := _cell_of(ctx.world, positions[i])
 	if ctx.blueprints.has_at(cell) and _step_off_blueprints(ctx, i, cell, dt):
 		return ACT_RUNNING
@@ -590,7 +590,7 @@ func _step_off_blueprints(ctx: AiContext, i: int, cell: int, dt: float) -> bool:
 	return false
 
 
-## Safety net: a pawn can transiently end up inside fresh construction
+## Safety net: a settler can transiently end up inside fresh construction
 ## (walked through a cell the tick it completed). Teleport to the nearest
 ## walkable cell, scanning outward deterministically.
 func _rescue_if_stuck(ctx: AiContext, i: int) -> void:
@@ -611,7 +611,7 @@ func _rescue_if_stuck(ctx: AiContext, i: int) -> void:
 					return
 
 
-## A blocking structure just appeared at this cell: move any pawns standing
+## A blocking structure just appeared at this cell: move any settlers standing
 ## in it to the nearest walkable neighbor (deterministic scan order).
 func _displace_from(ctx: AiContext, cell: int) -> void:
 	var world := ctx.world
@@ -945,7 +945,7 @@ static func _center_spawn_cell(world: SimWorld, order: int) -> Vector2i:
 	return Vector2i(cx, cy)
 
 
-## One stroll leg: steer from the pawn's current heading by a bounded,
+## One stroll leg: steer from the settler's current heading by a bounded,
 ## center-weighted turn. The cone widens toward a full U-turn only as
 ## attempts fail, so reversals happen when geometry demands them, not by
 ## coin flip.
