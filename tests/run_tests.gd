@@ -13,6 +13,7 @@ func _init() -> void:
 	_test_flow_field()
 	_test_pathfinder()
 	_test_ai()
+	_test_content_validation()
 	_test_building()
 	_test_wall_materials()
 	_test_material_cycle()
@@ -337,6 +338,114 @@ func _test_ai() -> void:
 func _fund_blueprints(s: Simulation) -> void:
 	for cell: int in s.blueprints.cells.duplicate():
 		var _n: int = s.blueprints.deliver(cell, 99)
+
+
+func _write_tmp(name: String, content: String) -> String:
+	var path := "user://%s" % name
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(content)
+	return path
+
+
+## The always-on validation path (ContentJson): loaders collect precise
+## errors instead of relying on stripped-in-release asserts. Tests call
+## the side-effect-free parse() cores directly with garbage files and
+## inspect the error lists.
+func _test_content_validation() -> void:
+	print("Content validation:")
+	var errors: Array[String] = []
+
+	# The shipped content must pass its own validators with zero errors.
+	var _a: AiDefs = AiDefs.parse(Simulation.AI_DEFS_PATH, errors)
+	var _i: ItemDefs = ItemDefs.parse(ItemDefs.PATH, errors)
+	var _s: StructureDefs = StructureDefs.parse(StructureDefs.PATH, errors)
+	var _t: TerrainDefs = TerrainDefs.parse(TerrainDefs.PATH, errors)
+	_check(errors.is_empty(), "shipped content validates clean (%s)" % ";".join(errors))
+
+	# Malformed JSON reports the file and a line number, not a null-deref.
+	errors = []
+	var bad_json := _write_tmp("bad_syntax.json", "{ \"items\": [ oops ]")
+	var _r1: ItemDefs = ItemDefs.parse(bad_json, errors)
+	_check(
+		errors.size() == 1 and errors[0].contains("bad_syntax.json:"),
+		"malformed JSON reports file and line"
+	)
+
+	errors = []
+	var zero_stack := _write_tmp(
+		"bad_stack.json",
+		"{ \"items\": [ { \"id\": \"wood\", \"stack\": 0, \"color\": \"#c77b58\" } ] }"
+	)
+	var _r2: ItemDefs = ItemDefs.parse(zero_stack, errors)
+	_check(not errors.is_empty() and errors[0].contains("stack"), "zero stack is rejected")
+
+	errors = []
+	var wrong_first := _write_tmp(
+		"bad_order.json",
+		"{ \"items\": [ { \"id\": \"stone\", \"stack\": 5, \"color\": \"#7f708a\" } ] }"
+	)
+	var _r3: ItemDefs = ItemDefs.parse(wrong_first, errors)
+	_check(not errors.is_empty() and errors[0].contains("wood"), "item order contract enforced")
+
+	# Unknown cost keys must not build free structures silently.
+	errors = []
+	var stone_cost := _write_tmp("bad_cost.json", """
+	{ "structures": [
+		{ "id": "wall", "work": 2.0, "cost": { "stone": 5 } },
+		{ "id": "door", "work": 2.0, "cost": {} },
+		{ "id": "bed", "work": 4.0, "cost": {} }
+	], "wall_materials": [ { "id": "wood", "sheet": "res://content/structures/wall_wood.png" } ] }
+	""")
+	var _r4: StructureDefs = StructureDefs.parse(stone_cost, errors)
+	var cost_flagged := false
+	for e: String in errors:
+		if e.contains("stone"):
+			cost_flagged = true
+	_check(cost_flagged, "unknown cost key is rejected (no silent free builds)")
+
+	# AI: unknown execution would otherwise no-op a settler forever.
+	errors = []
+	var bad_exec := _write_tmp("bad_exec.json", """
+	{ "needs": [ { "id": "hunger" } ], "actions": [
+		{ "id": "fish", "bucket": 1, "execution": "fish" },
+		{ "id": "idle", "bucket": 0, "execution": "wander" }
+	] }
+	""")
+	var _r5: AiDefs = AiDefs.parse(bad_exec, errors)
+	var exec_flagged := false
+	for e: String in errors:
+		if e.contains("unknown execution 'fish'"):
+			exec_flagged = true
+	_check(exec_flagged, "unknown execution is rejected")
+
+	# AI: restoring executions must name their need explicitly — the old
+	# considerations[0] convention silently wrapped to needs[-1].
+	errors = []
+	var no_restores := _write_tmp("bad_restores.json", """
+	{ "needs": [ { "id": "hunger" } ], "actions": [
+		{ "id": "eat", "bucket": 2, "execution": "eat",
+		  "considerations": [ { "input": "hunger", "curve": { "type": "poly" } } ] },
+		{ "id": "idle", "bucket": 0, "execution": "wander" }
+	] }
+	""")
+	var _r6: AiDefs = AiDefs.parse(no_restores, errors)
+	var restores_flagged := false
+	for e: String in errors:
+		if e.contains("restores"):
+			restores_flagged = true
+	_check(restores_flagged, "restoring execution without a restores key is rejected")
+
+	# Curves: fractional k with c > 0 evaluates NaN for x < c.
+	errors = []
+	var _c1: ResponseCurve = ResponseCurve.from_dict(
+		{"type": "poly", "k": 0.5, "c": 0.5}, errors, "test"
+	)
+	_check(not errors.is_empty() and errors[0].contains("NaN"), "NaN-region poly curve is rejected")
+	errors = []
+	var _c2: ResponseCurve = ResponseCurve.from_dict(
+		{"type": "warble"}, errors, "test"
+	)
+	_check(not errors.is_empty(), "unknown curve type is rejected")
 
 
 func _test_building() -> void:

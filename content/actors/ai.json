@@ -10,6 +10,7 @@
 			"bucket": 2,
 			"weight": 1.0,
 			"execution": "eat",
+			"restores": "hunger",
 			"params": { "restore_per_bite": 0.35, "ticks_per_bite": 45 },
 			"considerations": [
 				{
@@ -28,6 +29,7 @@
 			"bucket": 2,
 			"weight": 1.0,
 			"execution": "sleep_bed",
+			"restores": "rest",
 			"params": { "restore_per_second": 0.24, "wake_threshold": 0.95 },
 			"considerations": [
 				{
@@ -46,6 +48,7 @@
 			"bucket": 2,
 			"weight": 0.6,
 			"execution": "sleep",
+			"restores": "rest",
 			"params": { "restore_per_second": 0.12, "wake_threshold": 0.95 },
 			"considerations": [
 				{

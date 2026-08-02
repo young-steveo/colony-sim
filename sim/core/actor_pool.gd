@@ -491,7 +491,7 @@ func _eat_tick(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> i
 		if phase_timer[i] >= action.ticks_per_bite:
 			phase_timer[i] = 0
 			var _ate: bool = ctx.bushes.consume_at(cell)
-			var hunger_idx := action.considerations[0].need_idx
+			var hunger_idx := action.restores_need_idx
 			needs[hunger_idx][i] = minf(needs[hunger_idx][i] + action.restore_per_bite, 1.0)
 			if needs[hunger_idx][i] >= 0.98:
 				return ACT_DONE
@@ -509,7 +509,7 @@ func _sleep_tick(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) ->
 	var cell := _cell_of(ctx.world, positions[i])
 	if ctx.blueprints.has_at(cell) and _step_off_blueprints(ctx, i, cell, dt):
 		return ACT_RUNNING
-	var rest_idx := action.considerations[0].need_idx
+	var rest_idx := action.restores_need_idx
 	needs[rest_idx][i] = minf(needs[rest_idx][i] + action.restore_per_second * dt, 1.0)
 	return ACT_DONE if needs[rest_idx][i] >= action.wake_threshold else ACT_RUNNING
 
@@ -523,7 +523,7 @@ func _sleep_bed_tick(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float
 		_set_phase(i, BEDREST_GOTO)
 
 	if phase[i] == BEDREST_SLEEP:
-		var rest_idx := action.considerations[0].need_idx
+		var rest_idx := action.restores_need_idx
 		needs[rest_idx][i] = minf(needs[rest_idx][i] + action.restore_per_second * dt, 1.0)
 		return ACT_DONE if needs[rest_idx][i] >= action.wake_threshold else ACT_RUNNING
 	if ctx.bed_field == null or not _follow_field(ctx, i, ctx.bed_field, dt):

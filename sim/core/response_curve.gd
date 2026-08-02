@@ -16,20 +16,32 @@ var b := 0.0
 var c := 0.0
 
 
-static func from_dict(d: Dictionary) -> ResponseCurve:
+## Validating parse: problems are collected (with ctx naming the owning
+## action) rather than crashing — see ContentJson for the loud/strict
+## split between dev and release builds.
+static func from_dict(d: Dictionary, errors: Array[String], ctx: String) -> ResponseCurve:
 	var curve := ResponseCurve.new()
-	var type_name: String = d.get("type", "poly")
+	var type_name := ContentJson.text(d, "type", "poly", errors, ctx)
 	match type_name:
 		"poly":
 			curve.type = Type.POLY
 		"logistic":
 			curve.type = Type.LOGISTIC
 		_:
-			assert(false, "ResponseCurve: unknown type '%s'" % type_name)
-	curve.m = d.get("m", 1.0)
-	curve.k = d.get("k", 1.0)
-	curve.b = d.get("b", 0.0)
-	curve.c = d.get("c", 0.0)
+			errors.push_back("%s: unknown curve type '%s'" % [ctx, type_name])
+	curve.m = ContentJson.num(d, "m", 1.0, errors, ctx)
+	curve.k = ContentJson.num(d, "k", 1.0, errors, ctx)
+	curve.b = ContentJson.num(d, "b", 0.0, errors, ctx)
+	curve.c = ContentJson.num(d, "c", 0.0, errors, ctx)
+	# poly evaluates m * (x - c)^k: with fractional k, any x < c raises a
+	# negative base to a fractional power — NaN, which clampf keeps as
+	# NaN and the scoring pass silently propagates. Reject at load.
+	if curve.type == Type.POLY and curve.k != roundf(curve.k) and curve.c > 0.0:
+		errors.push_back(
+			"%s: poly curve with fractional k (%.2f) and c > 0 (%.2f) is NaN for x < c" % [
+				ctx, curve.k, curve.c,
+			]
+		)
 	return curve
 
 
