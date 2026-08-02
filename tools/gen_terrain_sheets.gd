@@ -1,12 +1,17 @@
 extends SceneTree
-## ONE-SHOT BOOTSTRAP — re-running OVERWRITES content/terrain/*.png,
-## including any hand-edits made in PyxelEdit since. Git history is
-## the undo. Derives material sheets from dirt.png (the donor).
-## One-shot bootstrap: derive terrain sheets from Stephen's dirt.png
-## (the structural donor — silhouette, scallops, seam discipline all his).
-## Per material: recolor the mask to its base, then stamp cell-local
-## character features per the art-direction session. Features never touch
-## transparent pixels (edges stay his) and never cross 16px cell bounds.
+## Derive a terrain sheet from Stephen's dirt.png (the structural donor —
+## silhouette, scallops, seam discipline all his). Per material: recolor
+## the mask to its base, then stamp cell-local character features per the
+## art-direction session. Features never touch transparent pixels (edges
+## stay his) and never cross 16px cell bounds.
+##
+## Usage (materials are explicit — nothing regenerates by default):
+##   godot --path . --headless --script res://tools/gen_terrain_sheets.gd -- <material> [material ...] [--force]
+## An existing sheet is NEVER overwritten without --force: hand edits in
+## PyxelEdit outrank the generator, and git only undoes committed states.
+## This began as the July 25 bootstrap that derived all six materials +
+## water; the feature recipes are kept as the executable record of those
+## art decisions and as the starting point for future materials.
 
 const CELL := 16
 const COLS := 12
@@ -24,17 +29,55 @@ class Rng:
 	func chance(p: float) -> bool:
 		return float(next() % 10000) / 10000.0 < p
 
+const MATERIALS: Array[String] = [
+	"stone", "grass", "dirt_fertile", "dirt_rocky", "sand", "mud", "water",
+]
+
+
 func _init() -> void:
+	var force := false
+	var wanted: Array[String] = []
+	for arg: String in OS.get_cmdline_user_args():
+		if arg == "--force":
+			force = true
+		elif MATERIALS.has(arg):
+			wanted.append(arg)
+		else:
+			push_error("unknown material '%s' — known: %s" % [arg, ", ".join(MATERIALS)])
+			quit(1)
+			return
+	if wanted.is_empty():
+		print("usage: godot --path . --headless --script res://tools/gen_terrain_sheets.gd -- <material> [material ...] [--force]")
+		print("materials: %s" % ", ".join(MATERIALS))
+		print("existing sheets are skipped without --force (hand edits outrank the generator)")
+		quit(1)
+		return
 	var donor := Image.load_from_file(ProjectSettings.globalize_path("res://content/terrain/dirt.png"))
-	_gen(donor, "stone", Color("7f708a"), _stone_features)
-	_gen(donor, "grass", Color("676633"), _grass_features)
-	_gen(donor, "dirt_fertile", Color("4c3e24"), _fertile_features)
-	_gen(donor, "dirt_rocky", Color("966c6c"), _rocky_features)
-	_gen(donor, "sand", Color("ab947a"), _sand_features)
-	_gen(donor, "mud", Color("9e4539"), _mud_features)
-	_gen_water(donor)
+	for id: String in wanted:
+		if FileAccess.file_exists(ProjectSettings.globalize_path("res://content/terrain/%s.png" % id)) and not force:
+			print("%s: exists, skipped (--force to overwrite)" % id)
+			continue
+		_gen_one(donor, id)
 	print("done")
 	quit()
+
+
+func _gen_one(donor: Image, id: String) -> void:
+	match id:
+		"stone":
+			_gen(donor, id, Color("7f708a"), _stone_features)
+		"grass":
+			_gen(donor, id, Color("676633"), _grass_features)
+		"dirt_fertile":
+			_gen(donor, id, Color("4c3e24"), _fertile_features)
+		"dirt_rocky":
+			_gen(donor, id, Color("966c6c"), _rocky_features)
+		"sand":
+			_gen(donor, id, Color("ab947a"), _sand_features)
+		"mud":
+			_gen(donor, id, Color("9e4539"), _mud_features)
+		"water":
+			_gen_water(donor)
 
 func _gen(donor: Image, id: String, base: Color, features: Callable) -> void:
 	var img := Image.create(donor.get_width(), donor.get_height(), false, Image.FORMAT_RGBA8)
