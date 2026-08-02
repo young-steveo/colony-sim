@@ -933,6 +933,12 @@ func _test_simulation() -> void:
 	_check(not sim_a.set_move_order(sim_a.actors.ids[0], 0, 0), "set_move_order rejects border/unwalkable")
 	_check(not sim_a.set_move_order(sim_a.actors.ids[0], -3, 40), "set_move_order rejects out-of-bounds")
 	_check(not sim_a.set_move_order(99999, rx, ry), "set_move_order rejects unknown settler")
+	# Off-map intent is rejected outright — flat-index math would
+	# otherwise alias (-2, y) onto a real interior cell across the map.
+	_check(not sim_a.cancel_blueprint(-2, 40), "cancel_blueprint rejects off-map")
+	_check(not sim_a.designate_chop(96, 40), "designate_chop rejects off-map")
+	_check(not sim_a.cancel_chop(40, -1), "cancel_chop rejects off-map")
+	_check(not sim_a.place_blueprint(-1, 40, SimWorld.STRUCT_WALL), "place_blueprint rejects off-map")
 	_check(sim_a.set_move_order(sim_a.actors.ids[0], rx, ry), "re-order replaces (accepted again)")
 	for s: Simulation in [sim_a, sim_b]:
 		for i: int in s.actors.count:

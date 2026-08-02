@@ -137,9 +137,7 @@ func set_move_order(settler_id: int, x: int, y: int) -> bool:
 	var i := actors.ids.find(settler_id)
 	if i < 0:
 		return false
-	if x < 0 or y < 0 or x >= world.width or y >= world.height:
-		return false
-	if not world.is_walkable(x, y):
+	if not _in_bounds(x, y) or not world.is_walkable(x, y):
 		return false
 	actors.set_order(i, y * world.width + x)
 	return true
@@ -156,7 +154,17 @@ func cancel_move_order(settler_id: int) -> bool:
 ## Paint a construction blueprint. Returns false if the cell can't take
 ## it. Trees block construction: you clear the forest before you build
 ## in it (the material cycle asserting itself).
+## The intent surface validates its own coordinates: flat-index math on
+## an out-of-bounds x wraps onto a REAL cell in an adjacent row, so an
+## off-map click could otherwise cancel a blueprint clear across the
+## map. Defensive here, regardless of which caller holds the mouse.
+func _in_bounds(x: int, y: int) -> bool:
+	return x >= 0 and y >= 0 and x < world.width and y < world.height
+
+
 func place_blueprint(x: int, y: int, type: int, material: int = 0) -> bool:
+	if not _in_bounds(x, y):
+		return false
 	if trees.has_tree_at(y * world.width + x):
 		return false
 	return blueprints.place(world, x, y, type, material)
@@ -165,6 +173,8 @@ func place_blueprint(x: int, y: int, type: int, material: int = 0) -> bool:
 ## Cancelling refunds any delivered materials as ground items where the
 ## ghost stood — hauled wood never vanishes into an undo.
 func cancel_blueprint(x: int, y: int) -> bool:
+	if not _in_bounds(x, y):
+		return false
 	var cell := y * world.width + x
 	var refund := blueprints.delivered_at(cell)
 	if not blueprints.cancel(cell):
@@ -177,10 +187,14 @@ func cancel_blueprint(x: int, y: int) -> bool:
 ## Plan the tree at this cell for chopping (plans-vs-orders: this is a
 ## plan — standing intent any settler may act on).
 func designate_chop(x: int, y: int) -> bool:
+	if not _in_bounds(x, y):
+		return false
 	return trees.designate(y * world.width + x)
 
 
 func cancel_chop(x: int, y: int) -> bool:
+	if not _in_bounds(x, y):
+		return false
 	return trees.cancel_designation(y * world.width + x)
 
 

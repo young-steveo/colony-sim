@@ -311,8 +311,16 @@ func _unhandled_input(event: InputEvent) -> void:
 func _handle_mouse(event: InputEvent) -> void:
 	var tile_pos := get_global_mouse_position() / TerrainRenderer.TILE_PX
 	var cell := Vector2i(floori(tile_pos.x), floori(tile_pos.y))
+	# Off-map guard: flat-index math on a negative x wraps onto a real
+	# cell in the previous row, so an off-map sweep would erase (or key
+	# stroke-dedup against) tiles clear across the map. The sim's intent
+	# surface rejects these too; the guard here keeps stroke state clean.
+	# Pointer clicks stay live off-map — clicking the void deselects.
+	var on_map := cell.x >= 0 and cell.y >= 0 \
+			and cell.x < sim.world.width and cell.y < sim.world.height
 	if chop_plan_mode:
-		_handle_chop_input(event, cell)
+		if on_map:
+			_handle_chop_input(event, cell)
 		return
 	var tool: int = palette.tool
 	var mb := event as InputEventMouseButton
@@ -325,6 +333,8 @@ func _handle_mouse(event: InputEvent) -> void:
 			return
 		match tool:
 			PaletteBar.Tool.PAINT, PaletteBar.Tool.PATTERN:
+				if not on_map:
+					return
 				_stroke_len = 0
 				_last_stroke_cell = -1
 				if mb.shift_pressed and _line_anchor.x != -9999:
@@ -333,6 +343,8 @@ func _handle_mouse(event: InputEvent) -> void:
 					_paint_cell(cell, tool)
 				_line_anchor = cell
 			PaletteBar.Tool.CANCEL:
+				if not on_map:
+					return
 				_last_stroke_cell = cell.y * sim.world.width + cell.x
 				var _c2: bool = sim.cancel_blueprint(cell.x, cell.y)
 			PaletteBar.Tool.EYEDROPPER:
@@ -350,6 +362,8 @@ func _handle_mouse(event: InputEvent) -> void:
 	# Drag: freehand stroke (paint/pattern) or sweep-erase (cancel).
 	var motion := event as InputEventMouseMotion
 	if motion and motion.button_mask & MOUSE_BUTTON_MASK_LEFT:
+		if not on_map:
+			return
 		match tool:
 			PaletteBar.Tool.PAINT, PaletteBar.Tool.PATTERN:
 				_paint_cell(cell, tool)
