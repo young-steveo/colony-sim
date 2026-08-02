@@ -1176,6 +1176,39 @@ contract on every observed work tick — planted center-of-tile, beside
 the work, facing it — and that cardinal stances dominate (this run:
 810 samples, 810 cardinal, 0 corner).
 
+### Orders-as-considerations lands; the rally bypass dies (August 2, 2026)
+
+The four-reviewer code audit found the debug rally verb silently
+broken three ways in the 45-tick async-field window (a re-rally was
+eaten whole for exactly the settlers standing at the old target).
+Stephen's verdict: rally was always a debug thing — build the real
+mechanism instead. Design settled in conversation: select a settler,
+order them to a spot; the order is a **single heavy consideration in
+that settler's own scoring pass** (the header's recorded promise,
+landed), never a control-state bypass. They obey unless something dire
+outbids them — and the inspection panel shows the losing scores, so
+disobedience stays legible. A future emergency "everyone to the safe
+zone" verb composes cleanly later: shared safe-zone field, same
+per-settler consideration.
+
+Mechanics: `order_cells` is standing per-settler intent (survives
+preemption — a settler who breaks for a meal resumes the march);
+`goto_order` sits in the needs bucket at weight 0.85, so orders
+outrank all work outright and lose only to dire need (crossover pinned
+by test: order 0.85 > moderate-hunger 0.69; dire-hunger-beside-food
+0.98 > held order 0.94). New sim primitive: `PathFinder` — bit-stable
+A* for one walker to one cell (FlowField's costs, corner rule, and
+border sentinel reused; packed (f, cell) heap keys make the tie-break
+total) — the per-settler complement to shared fields, synchronous
+because orders are player-rate. Live-walkability re-checks per step,
+same rule as fields; unreachable orders clear with a visible shrug.
+The whole command-field apparatus is deleted; the G debug overlay now
+cycles the six real shared fields and tracks field object identity, so
+it always shows the live one (a second audit finding closed in
+passing). UI: shift-click with a settler selected; gold tile marks the
+selected settler's destination. 128 tests, 20/20 ordered settlers
+arriving, deterministic.
+
 ## 14. References
 
 - **Brian Walker (Brogue), RPS interview** — the dungeon as "a living and
