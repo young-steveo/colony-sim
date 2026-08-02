@@ -44,8 +44,11 @@ var build_overlay: BuildOverlay
 var _line_anchor := Vector2i(-9999, -9999)  # last painted cell; shift-line start
 var _stroke_len := 0  # cells attempted this stroke; drives pattern parity
 var _last_stroke_cell := -1
-var show_field := false
-var rally_marker: Sprite2D
+# Debug field overlay: G cycles which shared flow field the heatmap shows.
+const FIELD_VIEWS: Array[StringName] = [&"off", &"food", &"chop", &"blueprint", &"wood", &"haul", &"bed"]
+var field_view_idx := 0
+var _field_shown: FlowField = null
+var order_marker: Sprite2D
 var selection_ring: Sprite2D
 var panel: Label
 var selected_id := -1
@@ -54,7 +57,6 @@ var hud: Label
 
 var _screenshot_mode := false
 var _warmup_ticks := 0
-var _rally_arg := ""
 var _cam_arg := ""
 var _shot_frame := 90
 var _frame := 0
@@ -73,8 +75,6 @@ func _ready() -> void:
 				default_zoom_idx = idx
 		elif a.begins_with("--actors="):
 			start_actors = maxi(1, int(a.trim_prefix("--actors=")))
-		elif a.begins_with("--rally="):
-			_rally_arg = a.trim_prefix("--rally=")
 		elif a.begins_with("--warmup="):
 			_warmup_ticks = maxi(0, int(a.trim_prefix("--warmup=")))
 		elif a.begins_with("--cam="):
@@ -107,9 +107,6 @@ func _ready() -> void:
 	ui.add_child(tool_cursor)
 
 	_start(start_seed)
-	if _rally_arg.contains(","):
-		var parts := _rally_arg.split(",")
-		_rally(int(parts[0]), int(parts[1]))
 	if "--house" in args:
 		_place_demo_house()
 	if "--cycle" in args:
@@ -137,8 +134,8 @@ func _start(seed_value: int) -> void:
 		actor_renderer.queue_free()
 	if field_overlay:
 		field_overlay.queue_free()
-	if rally_marker:
-		rally_marker.queue_free()
+	if order_marker:
+		order_marker.queue_free()
 	if bush_renderer:
 		bush_renderer.queue_free()
 	if structure_renderer:
@@ -183,15 +180,17 @@ func _start(seed_value: int) -> void:
 	selection_ring.modulate = Color(1.0, 1.0, 1.0, 0.3)
 	selection_ring.visible = false
 	add_child(selection_ring)
-	rally_marker = Sprite2D.new()
+	# Move-order marker: shows the SELECTED settler's ordered destination
+	# (placeholder gold tile until stakes-and-string lands).
+	order_marker = Sprite2D.new()
 	var marker_img := Image.create(1, 1, false, Image.FORMAT_RGB8)
 	marker_img.set_pixel(0, 0, Color.WHITE)
-	rally_marker.texture = ImageTexture.create_from_image(marker_img)
-	rally_marker.centered = false
-	rally_marker.scale = Vector2(TerrainRenderer.TILE_PX, TerrainRenderer.TILE_PX)
-	rally_marker.modulate = Palette.COLORS[18]
-	rally_marker.visible = false
-	add_child(rally_marker)
+	order_marker.texture = ImageTexture.create_from_image(marker_img)
+	order_marker.centered = false
+	order_marker.scale = Vector2(TerrainRenderer.TILE_PX, TerrainRenderer.TILE_PX)
+	order_marker.modulate = Palette.COLORS[18]
+	order_marker.visible = false
+	add_child(order_marker)
 	actor_renderer = ActorRenderer.new()
 	add_child(actor_renderer)
 	actor_renderer.setup(world_seed)
@@ -200,6 +199,7 @@ func _start(seed_value: int) -> void:
 	carry_renderer.setup(sim.item_defs)
 	build_overlay = BuildOverlay.new()
 	add_child(build_overlay)
+	_field_shown = null
 	_apply_field_overlay()
 
 	var map_px := Vector2(sim.world.width, sim.world.height) * TerrainRenderer.TILE_PX
@@ -230,6 +230,7 @@ func _process(delta: float) -> void:
 	tree_renderer.sync(sim.trees)
 	item_renderer.sync(sim.items)
 	structure_renderer.sync(sim.world, sim.blueprints)
+	_apply_field_overlay()
 	_pan_camera(delta)
 	_update_hud()
 	_update_selection()
@@ -274,7 +275,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			selected_id = -1
 		palette.select_tool(PaletteBar.Tool.POINTER)
 	elif event.is_action_pressed("debug_field"):
-		show_field = not show_field
+		field_view_idx = (field_view_idx + 1) % FIELD_VIEWS.size()
 		_apply_field_overlay()
 	elif event.is_action_pressed("zoom_in"):
 		_zoom(1)
@@ -335,14 +336,14 @@ func _handle_mouse(event: InputEvent) -> void:
 			PaletteBar.Tool.EYEDROPPER:
 				_eyedrop(cell)
 			PaletteBar.Tool.POINTER:
-				var picked := _pick_settler(tile_pos)
-				if picked >= 0:
-					selected_id = sim.actors.ids[picked]
-				elif mb.shift_pressed:
-					# Debug verb: rally everyone to the clicked tile.
-					_rally(cell.x, cell.y)
+				if mb.shift_pressed and selected_id >= 0:
+					# Move order for the selected settler — a heavy
+					# consideration in their own head, not a command
+					# (they may still break off for a dire need).
+					var _o: bool = sim.set_move_order(selected_id, cell.x, cell.y)
 				else:
-					selected_id = -1
+					var picked := _pick_settler(tile_pos)
+					selected_id = sim.actors.ids[picked] if picked >= 0 else -1
 		return
 	# Drag: freehand stroke (paint/pattern) or sweep-erase (cancel).
 	var motion := event as InputEventMouseMotion
@@ -514,18 +515,32 @@ func _place_demo_house() -> void:
 			return
 
 
-func _rally(x: int, y: int) -> void:
-	if not sim.set_command_target(x, y):
-		return
-	rally_marker.position = Vector2(x, y) * TerrainRenderer.TILE_PX
-	rally_marker.visible = true
-	_apply_field_overlay()
-
-
+## Per-frame: async rebuilds swap field object identity when they install,
+## so track the object — the heatmap always shows the live field and only
+## rebuilds its image when the field actually changes.
 func _apply_field_overlay() -> void:
-	field_overlay.visible = show_field and sim.command_field != null
-	if field_overlay.visible:
-		field_overlay.build(sim.world, sim.command_field)
+	var field := _current_debug_field()
+	field_overlay.visible = field != null
+	if field != null and field != _field_shown:
+		field_overlay.build(sim.world, field)
+	_field_shown = field
+
+
+func _current_debug_field() -> FlowField:
+	match FIELD_VIEWS[field_view_idx]:
+		&"food":
+			return sim.food_field
+		&"chop":
+			return sim.chop_field
+		&"blueprint":
+			return sim.blueprint_field
+		&"wood":
+			return sim.wood_field
+		&"haul":
+			return sim.haul_field
+		&"bed":
+			return sim.bed_field
+	return null
 
 
 func _zoom(direction: int) -> void:
@@ -557,21 +572,18 @@ func _pan_camera(delta: float) -> void:
 
 func _update_hud() -> void:
 	var speed_text := "paused" if sim_paused else "%dx" % int(SPEEDS[speed_idx])
-	var responding := 0
-	for i: int in sim.actors.count:
-		if sim.actors.responding[i] == 1:
-			responding += 1
 	var sw := palette.loaded_swatch()
 	var build_text: String = TOOL_NAMES[palette.tool] + " / " + str(sw["label"]).to_lower()
 	if chop_plan_mode:
 		build_text = "chop plans (LMB plan / RMB cancel)"
+	var field_text := "" if field_view_idx == 0 else " | field: %s" % FIELD_VIEWS[field_view_idx]
 	hud.text = (
-		"seed %d | actors %d (%d rallying) | brush: %s | bp %d | speed %s | zoom %s | fps %d | sim tick %.2f ms | tick %d\n" % [
-			world_seed, sim.actors.count, responding, build_text, sim.blueprints.cells.size(),
+		"seed %d | actors %d | brush: %s | bp %d | speed %s | zoom %s | fps %d | sim tick %.2f ms | tick %d%s\n" % [
+			world_seed, sim.actors.count, build_text, sim.blueprints.cells.size(),
 			speed_text, str(ZOOM_STEPS[zoom_idx]),
-			Engine.get_frames_per_second(), avg_tick_ms, sim.tick_count,
+			Engine.get_frames_per_second(), avg_tick_ms, sim.tick_count, field_text,
 		]
-		+ "[B/P/I/X] tools  [C] chop plans  [1-8] swatches  [Tab] shelf  [shift+click] line  [hold Alt] pick  [RMB] erase  [Esc] pointer (inspect / shift+click rally)  [Space] pause  [F1-F3] speed  [F] +100  [G] field  [N] seed  [R] regen  [WASD] pan  [wheel] zoom"
+		+ "[B/P/I/X] tools  [C] chop plans  [1-8] swatches  [Tab] shelf  [shift+click] line  [hold Alt] pick  [RMB] erase  [Esc] pointer (inspect / shift+click move order)  [Space] pause  [F1-F3] speed  [F] +100  [G] field  [N] seed  [R] regen  [WASD] pan  [wheel] zoom"
 	)
 
 
@@ -579,6 +591,7 @@ func _update_selection() -> void:
 	var idx := sim.actors.ids.find(selected_id) if selected_id >= 0 else -1
 	if idx < 0:
 		selection_ring.visible = false
+		order_marker.visible = false
 		panel.visible = false
 		return
 	var pool := sim.actors
@@ -587,27 +600,32 @@ func _update_selection() -> void:
 	selection_ring.position = pos * TerrainRenderer.TILE_PX - Vector2(half, half)
 	selection_ring.visible = true
 
+	# The selected settler's ordered destination, if any (gold tile).
+	var order := pool.order_cells[idx]
+	order_marker.visible = order >= 0
+	if order >= 0:
+		@warning_ignore("integer_division")
+		order_marker.position = Vector2(order % sim.world.width, order / sim.world.width) \
+				* TerrainRenderer.TILE_PX
+
 	var lines: Array[String] = []
 	lines.append("settler #%d | speed %.1f" % [pool.ids[idx], pool.speeds[idx]])
 	for nd: int in sim.defs.needs.size():
 		var v := pool.needs[nd][idx]
 		lines.append("%-8s %s %3d%%" % [sim.defs.needs[nd].id, _bar(v), int(v * 100.0)])
-	if pool.responding[idx] == 1:
-		lines.append("action: rallying (player command)")
-	else:
-		var a := pool.current_action[idx]
-		var scores: Array[String] = []
-		for k: int in sim.defs.actions.size():
-			if k != a:
-				scores.append("%s %.2f" % [sim.defs.actions[k].id, pool.last_scores[idx * sim.defs.actions.size() + k]])
-		if a >= 0:
-			var phase_text := pool.phase_label(sim.defs, idx)
-			lines.append("action: %s%s (%.2f)" % [
-				sim.defs.actions[a].id,
-				":" + phase_text if not phase_text.is_empty() else "",
-				pool.last_scores[idx * sim.defs.actions.size() + a],
-			])
-		lines.append("also considered: %s" % ", ".join(scores))
+	var a := pool.current_action[idx]
+	var scores: Array[String] = []
+	for k: int in sim.defs.actions.size():
+		if k != a:
+			scores.append("%s %.2f" % [sim.defs.actions[k].id, pool.last_scores[idx * sim.defs.actions.size() + k]])
+	if a >= 0:
+		var phase_text := pool.phase_label(sim.defs, idx)
+		lines.append("action: %s%s (%.2f)" % [
+			sim.defs.actions[a].id,
+			":" + phase_text if not phase_text.is_empty() else "",
+			pool.last_scores[idx * sim.defs.actions.size() + a],
+		])
+	lines.append("also considered: %s" % ", ".join(scores))
 	panel.text = "\n".join(lines)
 	panel.visible = true
 
