@@ -49,6 +49,11 @@ var _structures_version_seen := 0
 var _walkability_dirty := false
 var _build_action_idx := -1
 var _jobs: Dictionary = {}  # StringName -> _FieldJob in flight
+# Superseded jobs whose results will be dropped. Their tasks must STILL
+# be waited on — WorkerThreadPool only frees a task's record and its
+# captured data at wait_for_task_completion (documented requirement) —
+# so they queue here and are reaped once their threads finish.
+var _zombie_jobs: Array[_FieldJob] = []
 
 
 class _FieldJob:
@@ -238,11 +243,12 @@ func _bed_goals() -> PackedInt32Array:
 
 
 ## Snapshot inputs and start a worker-thread build; the result installs at
-## a fixed future tick. A re-dispatch for a kind already in flight simply
-## replaces the pending job (its task still runs; the result is dropped).
+## a fixed future tick. A re-dispatch for a kind already in flight retires
+## the pending job to the zombie queue (its task still runs; the result is
+## dropped, but the task is always waited on eventually).
 func _dispatch_field(kind: StringName, goals: PackedInt32Array) -> void:
+	_retire_job(kind)
 	if goals.is_empty():
-		var _e: bool = _jobs.erase(kind)
 		_install_field(kind, null)
 		return
 	var job := _FieldJob.new()
@@ -256,6 +262,16 @@ func _dispatch_field(kind: StringName, goals: PackedInt32Array) -> void:
 
 
 func _install_due_fields() -> void:
+	# Reap superseded jobs whose threads have finished. Non-blocking (a
+	# still-running orphan just waits for a later pass) and touches no
+	# sim state, so thread timing stays unobservable — the fixed-latency
+	# determinism contract is untouched.
+	var z := _zombie_jobs.size() - 1
+	while z >= 0:
+		if WorkerThreadPool.is_task_completed(_zombie_jobs[z].task_id):
+			var _zerr: int = WorkerThreadPool.wait_for_task_completion(_zombie_jobs[z].task_id)
+			_zombie_jobs.remove_at(z)
+		z -= 1
 	for kind: StringName in _jobs.keys():
 		var job: _FieldJob = _jobs[kind]
 		if tick_count < job.install_tick:
@@ -263,6 +279,34 @@ func _install_due_fields() -> void:
 		var _err: int = WorkerThreadPool.wait_for_task_completion(job.task_id)
 		var _e: bool = _jobs.erase(kind)
 		_install_field(kind, job.result)
+
+
+## Pull a kind's in-flight job (if any) off the active map into the
+## zombie queue. The worker thread keeps running; only its result is
+## abandoned.
+func _retire_job(kind: StringName) -> void:
+	var old: _FieldJob = _jobs.get(kind)
+	if old != null:
+		_zombie_jobs.push_back(old)
+		var _e: bool = _jobs.erase(kind)
+
+
+## Every outstanding worker task, active or zombie, blocking-waited and
+## dropped. Call before discarding a Simulation (world regen, quit) —
+## the pool cannot free a task that was never waited on.
+func shutdown() -> void:
+	for kind: StringName in _jobs:
+		var _e1: int = WorkerThreadPool.wait_for_task_completion(_jobs[kind].task_id)
+	_jobs.clear()
+	for zj: _FieldJob in _zombie_jobs:
+		var _e2: int = WorkerThreadPool.wait_for_task_completion(zj.task_id)
+	_zombie_jobs.clear()
+
+
+## Worker tasks not yet waited on (in flight + superseded). Debug/test
+## surface: bounded in steady state; shutdown() drives it to zero.
+func pending_task_count() -> int:
+	return _jobs.size() + _zombie_jobs.size()
 
 
 func _install_field(kind: StringName, field: FlowField) -> void:

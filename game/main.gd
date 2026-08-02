@@ -122,6 +122,8 @@ func _ready() -> void:
 
 
 func _start(seed_value: int) -> void:
+	if sim != null:
+		sim.shutdown()  # outstanding worker tasks must be waited on, or they leak
 	world_seed = seed_value
 	sim = Simulation.new(world_seed)
 	sim.spawn_actors(start_actors)

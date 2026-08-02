@@ -857,3 +857,28 @@ func _test_simulation() -> void:
 		"arrivals clear their orders (%d/%d still ordered)" % [still_ordered, sim_a.actors.count]
 	)
 	_check(sim_a.tick_count == 1050, "tick count advances")
+
+	# Field-job hygiene: rapid goal churn retires in-flight builds, and
+	# every retired task must still be waited on (WorkerThreadPool frees
+	# a task only at wait_for_task_completion) — so the pending count
+	# stays bounded under churn and shutdown() drains it to zero.
+	var sim_j := Simulation.new(11, 96, 96)
+	_check(sim_j.trees.cells.size() > 0, "job-churn world has trees")
+	var toggle_cell: int = sim_j.trees.cells[0]
+	var tcx := toggle_cell % sim_j.world.width
+	@warning_ignore("integer_division")
+	var tcy := toggle_cell / sim_j.world.width
+	for t: int in 40:
+		if t % 2 == 0:
+			var _d: bool = sim_j.designate_chop(tcx, tcy)
+		else:
+			var _c: bool = sim_j.cancel_chop(tcx, tcy)
+		sim_j.tick()
+	for t: int in 120:
+		sim_j.tick()
+	_check(
+		sim_j.pending_task_count() <= 6,
+		"superseded field jobs are reaped (%d tasks pending after churn)" % sim_j.pending_task_count()
+	)
+	sim_j.shutdown()
+	_check(sim_j.pending_task_count() == 0, "shutdown drains every worker task")
