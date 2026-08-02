@@ -1148,6 +1148,34 @@ weighted-cost flow fields when difficult terrain lands; tooltip +
 pawn card per design spec sheet 04; m6x11 font; palette
 micro-animations (want icon frames).
 
+### Work stances — settlers square up before working (August 2, 2026)
+
+First sim session after the break, driven by Stephen thinking ahead to
+the work animations: a chopper standing ON the tree (round 2's
+walkable-tree shortcut) and builders swinging from whatever angled,
+jittered spot the field dropped them at can't carry an animation
+language. Vocabulary note, recorded: they are **settlers** (or
+survivors) — never "pawns"; that's the other game's word.
+
+Settlers now claim a work STANCE with the job: the center of an
+adjacent tile, cardinal before corner (a corner only when geometry
+allows nothing else), walked to without jitter, planted exactly,
+facing the work. `facings` is new sim state — unit vector, travel
+direction while moving, toward the work when planted — waiting for the
+sprite pass to consume it. Claims and stances live and die as a pair;
+a claimed stance is reserved ground (nobody else plants there, nothing
+is built on it while its worker walks in). The wall pocket rule now
+evaluates from the stance the builder will actually occupy rather than
+wherever they stood when they picked the job — strictly more correct.
+Fixed in passing: the arrival-tick hesitation (travel's "nowhere
+further to go" ate a 45-tick work cooldown before the adjacent job was
+noticed, so builders paused a beat and a half beside the site).
+
+115 tests. The material-cycle integration now asserts the stance
+contract on every observed work tick — planted center-of-tile, beside
+the work, facing it — and that cardinal stances dominate (this run:
+810 samples, 810 cardinal, 0 corner).
+
 ## 14. References
 
 - **Brian Walker (Brogue), RPS interview** — the dungeon as "a living and
