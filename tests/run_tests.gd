@@ -11,6 +11,7 @@ func _init() -> void:
 	_test_rng()
 	_test_map_gen()
 	_test_flow_field()
+	_test_pathfinder()
 	_test_ai()
 	_test_building()
 	_test_wall_materials()
@@ -168,11 +169,89 @@ func _test_flow_field() -> void:
 	_check(f.distances[c] == 0, "downhill walk from farthest cell reaches the goal")
 
 
+func _test_pathfinder() -> void:
+	print("PathFinder:")
+	var w := SimWorld.new(42, 96, 96)
+	var cells := PackedInt32Array()
+	for cc: int in w.width * w.height:
+		@warning_ignore("integer_division")
+		if w.is_walkable(cc % w.width, cc / w.width):
+			var _e: bool = cells.push_back(cc)
+	_check(cells.size() > 100, "walkable cells found (%d)" % cells.size())
+	var from := cells[0]
+	var to := cells[cells.size() - 1]
+	var p1 := PathFinder.find(w, from, to)
+	var p2 := PathFinder.find(w, from, to)
+	_check(p1 == p2, "search is deterministic")
+	_check(p1.size() > 0 and p1[p1.size() - 1] == to, "path crosses the map and ends on the goal (%d steps)" % p1.size())
+	_check(_path_legal(w, from, p1), "every step adjacent, walkable, corner-safe")
+	_check(PathFinder.find(w, from, from).is_empty(), "same-cell path is empty")
+	var wet := -1
+	for cc: int in w.width * w.height:
+		@warning_ignore("integer_division")
+		if not w.is_walkable(cc % w.width, cc / w.width):
+			wet = cc
+			break
+	_check(wet >= 0 and PathFinder.find(w, from, wet).is_empty(), "unwalkable goal yields empty path")
+
+	# A wall in the way forces a detour: wall the center of an open 3x3,
+	# then path west neighbor -> east neighbor. The direct lane is gone
+	# and the diagonal squeeze past the wall corner is illegal, so the
+	# legal route is at least four steps around.
+	var center := -1
+	for cy: int in range(4, 90):
+		for cx: int in range(4, 90):
+			var open := true
+			for d: int in 9:
+				if not w.is_walkable(cx + (d % 3) - 1, cy + (d / 3) - 1):
+					open = false
+					break
+			if open:
+				center = cy * w.width + cx
+				break
+		if center >= 0:
+			break
+	_check(center >= 0, "found an open 3x3 site")
+	w.set_structure(center, SimWorld.STRUCT_WALL, 0)
+	var detour := PathFinder.find(w, center - 1, center + 1)
+	_check(
+		detour.size() >= 4 and not detour.has(center) and _path_legal(w, center - 1, detour),
+		"walled cell forces a legal detour (%d steps)" % detour.size()
+	)
+
+
+## Walk a returned path asserting each step is a walkable neighbor and
+## diagonals never cut a blocked corner (FlowField's rule).
+func _path_legal(w: SimWorld, from: int, path: PackedInt32Array) -> bool:
+	var prev := from
+	for cell: int in path:
+		@warning_ignore("integer_division")
+		var py := prev / w.width
+		var px := prev % w.width
+		@warning_ignore("integer_division")
+		var cy := cell / w.width
+		var cx := cell % w.width
+		var dx := cx - px
+		var dy := cy - py
+		if maxi(absi(dx), absi(dy)) != 1:
+			return false
+		if not w.is_walkable(cx, cy):
+			return false
+		if dx != 0 and dy != 0:
+			if not w.is_walkable(px + dx, py) or not w.is_walkable(px, py + dy):
+				return false
+		prev = cell
+	return true
+
+
 func _test_ai() -> void:
 	print("AI:")
 	var defs := AiDefs.load_file(Simulation.AI_DEFS_PATH)
 	_check(defs.needs.size() == 3, "three needs load (hunger, rest, safety)")
-	_check(defs.actions.size() == 7, "seven actions load (eat, sleeps, chop, haul, build, wander)")
+	_check(
+		defs.actions.size() == 8,
+		"eight actions load (eat, sleep, sleep_bed, chop, haul, build, goto_order, wander)"
+	)
 	_check(defs.need_index(&"hunger") >= 0, "need_index resolves hunger")
 	var expected_buckets: Array[int] = [2, 1, 0]
 	_check(defs.bucket_order == expected_buckets, "buckets ordered high to low")
@@ -190,6 +269,29 @@ func _test_ai() -> void:
 	_check(is_equal_approx(hunger_con.score(0.0), 1.0), "starving hunger scores eat at 1")
 	var mid := hunger_con.score(0.5)
 	_check(mid > 0.2 and mid < 0.3, "half hunger scores quadratically (~0.25)")
+
+	# Move orders are heavy considerations, not commands: the goto_order
+	# score must beat eat at moderate hunger (the settler obeys) and lose
+	# to eat at dire hunger with food at hand (the settler eats first).
+	# Same bucket, so the comparison is a straight score contest.
+	var goto_action := defs.actions[defs.action_index(&"goto_order")]
+	var goto_score := goto_action.weight * AiDefs.compensate(
+		goto_action.considerations[0].score(1.0), 1
+	)
+	var dist_con := eat.considerations[1]
+	var eat_moderate := eat.weight * AiDefs.compensate(
+		hunger_con.score(0.25) * dist_con.score(0.0), 2
+	)
+	var eat_dire := eat.weight * AiDefs.compensate(
+		hunger_con.score(0.02) * dist_con.score(0.0), 2
+	)
+	_check(goto_score > eat_moderate, "order outbids moderate hunger (%.2f > %.2f)" % [goto_score, eat_moderate])
+	_check(
+		eat_dire > goto_score * ActorPool.COMMITMENT_BONUS,
+		"dire hunger beside food outbids a held order (%.2f > %.2f)" % [
+			eat_dire, goto_score * ActorPool.COMMITMENT_BONUS,
+		]
+	)
 
 	# Behavior: a hungry settler near food decides to eat and its hunger rises.
 	var sim := Simulation.new(7, 96, 96)
@@ -708,7 +810,8 @@ func _test_simulation() -> void:
 	_check(sim_a.actors.positions == sim_b.actors.positions, "150 wander ticks deterministic")
 	_check(sim_a.actors.positions != spawn_positions, "actors actually move")
 
-	# Rally everyone to a walkable cell near the map center.
+	# Move orders: order every settler to a walkable cell near the map
+	# center (orders are per-settler considerations, not a command bypass).
 	var rx := -1
 	var ry := -1
 	for r: int in 40:
@@ -716,33 +819,41 @@ func _test_simulation() -> void:
 			rx = 48 + r
 			ry = 48
 			break
-	_check(rx >= 0, "found a walkable rally cell")
-	_check(sim_a.set_command_target(rx, ry), "set_command_target accepts walkable cell")
-	_check(not sim_a.set_command_target(0, 0), "set_command_target rejects border/unwalkable")
-	var _ok: bool = sim_b.set_command_target(rx, ry)
+	_check(rx >= 0, "found a walkable order cell")
+	_check(sim_a.set_move_order(sim_a.actors.ids[0], rx, ry), "set_move_order accepts walkable cell")
+	_check(not sim_a.set_move_order(sim_a.actors.ids[0], 0, 0), "set_move_order rejects border/unwalkable")
+	_check(not sim_a.set_move_order(sim_a.actors.ids[0], -3, 40), "set_move_order rejects out-of-bounds")
+	_check(not sim_a.set_move_order(99999, rx, ry), "set_move_order rejects unknown settler")
+	_check(sim_a.set_move_order(sim_a.actors.ids[0], rx, ry), "re-order replaces (accepted again)")
+	for s: Simulation in [sim_a, sim_b]:
+		for i: int in s.actors.count:
+			var _o: bool = s.set_move_order(s.actors.ids[i], rx, ry)
 
-	var rally_pos := Vector2(rx + 0.5, ry + 0.5)
-	var someone_arrived := false
+	# Arrivals are sampled DURING the run: an arrived settler's order
+	# clears and they wander off, so end-of-run proximity undercounts.
+	var order_pos := Vector2(rx + 0.5, ry + 0.5)
+	var arrived := {}
 	for t: int in 900:
 		sim_a.tick()
 		sim_b.tick()
 		if t % 25 == 0:
 			check_walkable.call()
 			for i: int in sim_a.actors.count:
-				if sim_a.actors.positions[i].distance_to(rally_pos) < 2.0:
-					someone_arrived = true
-	_check(sim_a.actors.positions == sim_b.actors.positions, "rally + 900 ticks deterministic")
+				if sim_a.actors.positions[i].distance_to(order_pos) < 2.0:
+					arrived[i] = true
+	_check(sim_a.actors.positions == sim_b.actors.positions, "orders + 900 ticks deterministic")
 	_check(stayed_walkable, "actors never leave walkable ground")
-	_check(someone_arrived, "actors reach the rally point")
-
-	var still_responding := 0
-	for i: int in sim_a.actors.count:
-		if sim_a.actors.responding[i] == 1:
-			still_responding += 1
 	_check(
-		still_responding < sim_a.actors.count,
-		"arrivals revert to wandering (%d/%d still responding)" % [
-			still_responding, sim_a.actors.count,
-		]
+		arrived.size() > sim_a.actors.count / 2,
+		"ordered settlers reach the target (%d/%d seen arriving)" % [arrived.size(), sim_a.actors.count]
+	)
+
+	var still_ordered := 0
+	for i: int in sim_a.actors.count:
+		if sim_a.actors.order_cells[i] >= 0:
+			still_ordered += 1
+	_check(
+		still_ordered < sim_a.actors.count,
+		"arrivals clear their orders (%d/%d still ordered)" % [still_ordered, sim_a.actors.count]
 	)
 	_check(sim_a.tick_count == 1050, "tick count advances")

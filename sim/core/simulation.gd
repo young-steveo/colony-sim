@@ -4,7 +4,7 @@ extends RefCounted
 ## The game layer decides when to call tick() (speed, pause); the sim itself
 ## has no concept of wall-clock time, rendering, or input.
 ##
-## Player intent enters the sim as data through methods (set_command_target,
+## Player intent enters the sim as data through methods (set_move_order,
 ## place_blueprint, cancel_blueprint) — never by mutating state directly.
 
 const TICKS_PER_SECOND := 30
@@ -35,11 +35,9 @@ var blueprints: Blueprints
 var food_field: FlowField
 var bed_field: FlowField
 var blueprint_field: FlowField
-var command_field: FlowField
 var chop_field: FlowField
 var wood_field: FlowField
 var haul_field: FlowField
-var command_cell := -1
 var tick_count := 0
 
 var _ctx := AiContext.new()
@@ -114,7 +112,6 @@ func tick() -> void:
 		# there, and nothing is built on it while its worker walks in.
 		if actors.work_spots[i] >= 0:
 			_ctx.occupied[actors.work_spots[i]] = true
-	_ctx.command_field = command_field
 	_ctx.tick = tick_count
 	actors.tick(_ctx, TICK_DT)
 	# Structure completions change walkability (and bed goals); note them
@@ -125,14 +122,29 @@ func tick() -> void:
 	tick_count += 1
 
 
-## Rally every actor to a tile. Returns false (no-op) if it isn't walkable.
-## The field builds asynchronously; actors answer once it installs.
-func set_command_target(x: int, y: int) -> bool:
+## Order one settler to a tile (plans-vs-orders: THIS is the first true
+## order). It is a heavy consideration in the settler's own scoring pass,
+## not a command bypass — a dire need can still outbid it, legibly. A new
+## order replaces the old one. Returns false for unknown settlers and
+## unwalkable or out-of-bounds targets: the sim's intent surface is
+## defensive no matter which caller holds the mouse.
+func set_move_order(settler_id: int, x: int, y: int) -> bool:
+	var i := actors.ids.find(settler_id)
+	if i < 0:
+		return false
+	if x < 0 or y < 0 or x >= world.width or y >= world.height:
+		return false
 	if not world.is_walkable(x, y):
 		return false
-	command_cell = y * world.width + x
-	_dispatch_field(&"command", PackedInt32Array([command_cell]))
-	actors.rally(_ctx)
+	actors.set_order(i, y * world.width + x)
+	return true
+
+
+func cancel_move_order(settler_id: int) -> bool:
+	var i := actors.ids.find(settler_id)
+	if i < 0 or actors.order_cells[i] < 0:
+		return false
+	actors.clear_order(i)
 	return true
 
 
@@ -195,8 +207,6 @@ func _dispatch_stale_fields() -> void:
 		_dispatch_blueprint_field()
 		_dispatch_field(&"chop", trees.plan_goals())
 		_dispatch_field(&"wood", items.goal_cells())
-		if command_cell >= 0:
-			_dispatch_field(&"command", PackedInt32Array([command_cell]))
 		return
 	if bushes.version != _bush_version_seen:
 		_bush_version_seen = bushes.version
@@ -266,9 +276,6 @@ func _install_field(kind: StringName, field: FlowField) -> void:
 		&"blueprint":
 			blueprint_field = field
 			_ctx.blueprint_field = field
-		&"command":
-			command_field = field
-			_ctx.command_field = field
 		&"chop":
 			chop_field = field
 			_ctx.chop_field = field

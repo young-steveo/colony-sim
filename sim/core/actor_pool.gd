@@ -10,15 +10,17 @@ extends RefCounted
 ## recorded per settler in last_scores so the inspection panel can always
 ## answer "what is this settler doing and why" (the legibility contract).
 ##
-## A player rally command (responding == 1) overrides the brain until
-## arrival — director-mode-lite; later, orders become heavy considerations
-## inside the same scoring pass instead of a bypass.
+## Player move orders are per-settler standing intent (order_cells), read
+## by the has_order input as a heavy consideration inside the same scoring
+## pass — the GDD's orders-as-considerations promise, landed. A dire need
+## can still overrule an order (the curves decide), and the inspection
+## panel shows the losing scores, so disobedience stays legible.
 ##
 ## ACTIVITY MACHINES (GDD Architecture Commitments): the brain owns
 ## transitions BETWEEN activities; an activity owns transitions WITHIN
 ## itself. Each execution is a small phase machine — enter via
 ## _start_action, tick returns ACT_RUNNING/ACT_DONE/ACT_FAILED, and every
-## way out (completion, failure, preemption, rally, rescue) releases settler
+## way out (completion, failure, preemption, rescue) releases settler
 ## state through the single exit hook (_exit_action). An activity may
 ## finish itself (its success criterion can read the need it restores) but
 ## it never weighs alternatives — "should this settler be doing something
@@ -76,6 +78,7 @@ const PHASE_NAMES := {
 	&"wander": ["wait", "stroll"],
 	&"chop": ["travel", "position", "chop"],
 	&"haul": ["fetch", "deliver"],
+	&"goto": ["travel"],
 }
 
 var count := 0
@@ -84,7 +87,6 @@ var positions := PackedVector2Array()
 var prev_positions := PackedVector2Array()
 var targets := PackedVector2Array()
 var speeds := PackedFloat32Array()
-var responding := PackedByteArray()
 var decision_counts := PackedInt32Array()
 var jitter := PackedVector2Array()
 var current_action := PackedInt32Array()
@@ -97,6 +99,12 @@ var carry_type := PackedInt32Array()  # item type in hands, or -1
 var carry_count := PackedInt32Array()  # how many of it
 var headings := PackedFloat32Array()  # stroll direction, persists across legs
 var facings := PackedVector2Array()  # unit vector faced: travel direction, or the work when planted
+# Move orders: standing per-settler intent, NOT activity state — an order
+# survives preemption (a settler who breaks off to eat resumes the march)
+# and clears only on arrival, unreachability, or player cancel.
+var order_cells := PackedInt32Array()  # ordered destination cell, or -1
+var order_paths: Array[PackedInt32Array] = []  # cached A* path per settler
+var order_path_pos := PackedInt32Array()  # next waypoint index into the path
 var needs: Array[PackedFloat32Array] = []
 var last_scores := PackedFloat32Array()  # count * n_actions, row per settler
 
@@ -117,7 +125,9 @@ func spawn(world: SimWorld, defs: AiDefs, n: int) -> void:
 	var _e3: int = prev_positions.resize(new_count)
 	var _e4: int = targets.resize(new_count)
 	var _e5: int = speeds.resize(new_count)
-	var _e6: int = responding.resize(new_count)
+	var _e6: int = order_cells.resize(new_count)
+	var _e21: int = order_path_pos.resize(new_count)
+	var _e22: int = order_paths.resize(new_count)
 	var _e7: int = decision_counts.resize(new_count)
 	var _e8: int = jitter.resize(new_count)
 	var _e9: int = current_action.resize(new_count)
@@ -147,7 +157,9 @@ func spawn(world: SimWorld, defs: AiDefs, n: int) -> void:
 		prev_positions[i] = pos
 		targets[i] = pos
 		speeds[i] = 2.0 + 2.0 * s.nextf()
-		responding[i] = 0
+		order_cells[i] = -1
+		order_paths[i] = PackedInt32Array()
+		order_path_pos[i] = 0
 		decision_counts[i] = 0
 		jitter[i] = Vector2((s.nextf() - 0.5) * JITTER, (s.nextf() - 0.5) * JITTER)
 		current_action[i] = NO_ACTION
@@ -167,14 +179,19 @@ func spawn(world: SimWorld, defs: AiDefs, n: int) -> void:
 	count = new_count
 
 
-## A rally command exists: everyone answers the call. Rallying is an
-## interruption like any other — the current activity exits cleanly (a
-## carrying hauler drops the log where they stand and runs; the pile is
-## the story of the interruption).
-func rally(ctx: AiContext) -> void:
-	for i: int in count:
-		responding[i] = 1
-		_stop_action(ctx, i)
+## Issue or replace a move order. Deliberately NOT an interrupt: the order
+## enters the next scoring pass (staggered decide, <=0.5 s away) as a heavy
+## consideration and wins unless something dire outbids it.
+func set_order(i: int, cell: int) -> void:
+	order_cells[i] = cell
+	order_paths[i] = PackedInt32Array()
+	order_path_pos[i] = 0
+
+
+func clear_order(i: int) -> void:
+	order_cells[i] = -1
+	order_paths[i] = PackedInt32Array()
+	order_path_pos[i] = 0
 
 
 func need_value(need_idx: int, i: int) -> float:
@@ -192,9 +209,6 @@ func tick(ctx: AiContext, dt: float) -> void:
 	for i: int in count:
 		prev_positions[i] = positions[i]
 		_rescue_if_stuck(ctx, i)
-		if responding[i] == 1 and ctx.command_field != null:
-			_tick_rally(ctx, i, dt)
-			continue
 		if current_action[i] == NO_ACTION or (ctx.tick + ids[i]) % DECIDE_INTERVAL == 0:
 			_decide(ctx, i)
 		var action := ctx.defs.actions[current_action[i]]
@@ -214,6 +228,8 @@ func tick(ctx: AiContext, dt: float) -> void:
 				outcome = _chop_tick(ctx, i, dt)
 			&"haul":
 				outcome = _haul_tick(ctx, i, dt)
+			&"goto":
+				outcome = _goto_tick(ctx, i, dt)
 		if outcome != ACT_RUNNING:
 			_stop_action(ctx, i)  # re-decide next tick
 
@@ -270,6 +286,8 @@ func _input_value(ctx: AiContext, i: int, con: AiDefs.ConsiderationDef) -> float
 	if con.need_idx >= 0:
 		return needs[con.need_idx][i]
 	match con.input:
+		&"has_order":
+			return 1.0 if order_cells[i] >= 0 else 0.0
 		&"food_distance":
 			return _field_distance(ctx, i, ctx.food_field)
 		&"bed_distance":
@@ -335,7 +353,7 @@ func _start_action(ctx: AiContext, i: int, action_idx: int) -> void:
 
 
 ## Exit hook: the ONLY place settler-local activity state is released. Every
-## way out of an activity — DONE, FAILED, preemption, rally, rescue,
+## way out of an activity — DONE, FAILED, preemption, rescue,
 ## displacement — funnels through here so nothing leaks into the next
 ## one. Anything still in the settler's hands goes to the ground where they
 ## stand (wood never vanishes; a dropped log is a visible story beat).
@@ -380,12 +398,82 @@ func phase_label(defs: AiDefs, i: int) -> String:
 # starts a different one.
 
 
-## Rally is not an activity — it's the player's hand overriding the brain
-## entirely (see header). It gets the same clean exit on arrival.
-func _tick_rally(ctx: AiContext, i: int, dt: float) -> void:
-	if not _follow_field(ctx, i, ctx.command_field, dt):
-		responding[i] = 0
-		_stop_action(ctx, i)
+## Answering a move order: walk the cached A* path to the ordered cell.
+## The order is standing intent, not activity state — preemption (a dire
+## need outbidding it) exits THIS activity but keeps the order, and the
+## settler resumes the march when the order wins the next scoring pass.
+## Arrival and unreachability clear the order; an unreachable order is a
+## visible shrug (FAILED), not a silent retry loop.
+func _goto_tick(ctx: AiContext, i: int, dt: float) -> int:
+	var order := order_cells[i]
+	if order < 0:
+		return ACT_DONE  # cancelled since the brain chose this
+	var cell := _cell_of(ctx.world, positions[i])
+	if cell == order:
+		clear_order(i)
+		return ACT_DONE
+	if order_paths[i].is_empty():
+		order_paths[i] = PathFinder.find(ctx.world, cell, order)
+		order_path_pos[i] = 0
+		if order_paths[i].is_empty():
+			clear_order(i)
+			return ACT_FAILED  # unreachable: give up, legibly
+	var remaining := speeds[i] * dt
+	var advances := 0
+	while advances < 3:
+		var pos := positions[i]
+		var to_target := targets[i] - pos
+		var dist := to_target.length()
+		if dist <= ARRIVE_DISTANCE:
+			if order_path_pos[i] >= order_paths[i].size():
+				# Path exhausted but not on the order cell (stale cache
+				# from before a preemption): repath next tick.
+				order_paths[i] = PackedInt32Array()
+				return ACT_RUNNING
+			var next := order_paths[i][order_path_pos[i]]
+			# The path was true at search time; the world moves. Every
+			# step re-checks live walkability, adjacency (a preemption
+			# may have moved us off the path), and the corner rule —
+			# any surprise means repath, never walk through.
+			var ccell := _cell_of(ctx.world, pos)
+			if not _order_step_ok(ctx.world, ccell, next):
+				order_paths[i] = PackedInt32Array()
+				return ACT_RUNNING
+			targets[i] = _cell_center(ctx.world, next) + jitter[i]
+			order_path_pos[i] += 1
+			advances += 1
+			continue
+		if remaining <= 0.0:
+			return ACT_RUNNING
+		var step := minf(remaining, dist)
+		var dir := to_target / dist
+		positions[i] = pos + dir * step
+		facings[i] = dir
+		remaining -= step
+	return ACT_RUNNING
+
+
+## One path step is takeable when the next cell is a live-walkable
+## neighbor and, for diagonals, both flanking orthogonals are open
+## (FlowField's corner rule, applied to the live world).
+static func _order_step_ok(world: SimWorld, from_cell: int, to_cell: int) -> bool:
+	var w := world.width
+	@warning_ignore("integer_division")
+	var fy := from_cell / w
+	var fx := from_cell % w
+	@warning_ignore("integer_division")
+	var ty := to_cell / w
+	var tx := to_cell % w
+	var dx := tx - fx
+	var dy := ty - fy
+	if maxi(absi(dx), absi(dy)) != 1:
+		return false
+	if not world.is_walkable(tx, ty):
+		return false
+	if dx != 0 and dy != 0:
+		if not world.is_walkable(fx + dx, fy) or not world.is_walkable(fx, fy + dy):
+			return false
+	return true
 
 
 func _eat_tick(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float) -> int:

@@ -14,7 +14,6 @@ var items: Items
 var food_field: FlowField
 var bed_field: FlowField
 var blueprint_field: FlowField
-var command_field: FlowField
 var chop_field: FlowField  # standing chop plans
 var wood_field: FlowField  # ground wood stacks
 var haul_field: FlowField  # blueprints awaiting materials

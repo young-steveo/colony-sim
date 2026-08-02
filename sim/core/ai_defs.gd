@@ -15,10 +15,10 @@ extends RefCounted
 ## Inputs that aren't need levels; the matching read lives in ActorPool.
 const MISC_INPUTS: Array[StringName] = [
 	&"food_distance", &"bed_distance", &"blueprint_distance", &"build_crowding",
-	&"chop_distance", &"wood_distance", &"haul_target_distance",
+	&"chop_distance", &"wood_distance", &"haul_target_distance", &"has_order",
 ]
 const EXECUTIONS: Array[StringName] = [
-	&"eat", &"sleep", &"sleep_bed", &"build", &"wander", &"chop", &"haul",
+	&"eat", &"sleep", &"sleep_bed", &"build", &"wander", &"chop", &"haul", &"goto",
 ]
 
 

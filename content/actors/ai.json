@@ -103,6 +103,18 @@
 			]
 		},
 		{
+			"id": "goto_order",
+			"bucket": 2,
+			"weight": 0.85,
+			"execution": "goto",
+			"considerations": [
+				{
+					"input": "has_order",
+					"curve": { "type": "poly", "m": 1.0, "k": 1.0, "b": 0.0, "c": 0.0 }
+				}
+			]
+		},
+		{
 			"id": "wander",
 			"bucket": 0,
 			"weight": 0.25,
