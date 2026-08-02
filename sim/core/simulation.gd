@@ -110,6 +110,10 @@ func tick() -> void:
 	for i: int in actors.count:
 		var p := actors.positions[i]
 		_ctx.occupied[floori(p.y) * world.width + floori(p.x)] = true
+		# A claimed work stance is reserved ground: nobody else plants
+		# there, and nothing is built on it while its worker walks in.
+		if actors.work_spots[i] >= 0:
+			_ctx.occupied[actors.work_spots[i]] = true
 	_ctx.command_field = command_field
 	_ctx.tick = tick_count
 	actors.tick(_ctx, TICK_DT)

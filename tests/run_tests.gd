@@ -576,15 +576,60 @@ func _material_cycle_integration() -> void:
 		s.spawn_actors(8)
 	_check(designated > 0, "trees designated near spawn (%d)" % designated)
 
+	# While the cycle runs, every settler seen in a WORK phase must be
+	# planted at the center of a tile beside their claim — never on it —
+	# facing the work: the stance contract the work animations are drawn
+	# for. Cardinal stances must dominate (corners are the fallback).
+	var chop_action := sim_a.defs.action_index(&"chop")
+	var build_action := sim_a.defs.action_index(&"build")
+	var work_samples := 0
+	var cardinal_stances := 0
+	var corner_stances := 0
+	var stance_violations := 0
 	for t: int in 9000:
 		sim_a.tick()
 		sim_b.tick()
+		var pool := sim_a.actors
+		for i: int in pool.count:
+			var act := pool.current_action[i]
+			var working := (act == chop_action and pool.phase[i] == ActorPool.CHOP_WORK) \
+					or (act == build_action and pool.phase[i] == ActorPool.BUILD_WORK)
+			if not working:
+				continue
+			work_samples += 1
+			var claim := pool.work_claims[i]
+			var pos := pool.positions[i]
+			var cell := floori(pos.y) * w + floori(pos.x)
+			@warning_ignore("integer_division")
+			var span_x := absi(cell % w - claim % w) if claim >= 0 else 99
+			@warning_ignore("integer_division")
+			var span_y := absi(cell / w - claim / w) if claim >= 0 else 99
+			var centered := absf(pos.x - (floorf(pos.x) + 0.5)) < 0.001 \
+					and absf(pos.y - (floorf(pos.y) + 0.5)) < 0.001
+			@warning_ignore("integer_division")
+			var to_work := (Vector2(claim % w + 0.5, claim / w + 0.5) - pos).normalized()
+			var facing_ok := claim >= 0 and pool.facings[i].distance_to(to_work) < 0.001
+			if maxi(span_x, span_y) != 1 or not centered or not facing_ok:
+				stance_violations += 1
+			elif span_x + span_y == 1:
+				cardinal_stances += 1
+			else:
+				corner_stances += 1
 	var walls := 0
 	for cell: int in sim_a.world.width * sim_a.world.height:
 		if sim_a.world.structure_at_cell(cell) == SimWorld.STRUCT_WALL:
 			walls += 1
 	_check(sim_a.trees.felled_total > 0, "pawns felled planned trees (%d)" % sim_a.trees.felled_total)
 	_check(walls > 0, "walls built from hauled wood (%d)" % walls)
+	_check(work_samples > 0, "settlers observed at work (%d samples)" % work_samples)
+	_check(
+		stance_violations == 0,
+		"working settlers plant centered beside the work, facing it (%d violations)" % stance_violations
+	)
+	_check(
+		cardinal_stances > corner_stances,
+		"cardinal stances dominate (%d cardinal, %d corner)" % [cardinal_stances, corner_stances]
+	)
 	_check(
 		sim_a.actors.positions == sim_b.actors.positions
 			and sim_a.items.cells == sim_b.items.cells

@@ -61,18 +61,20 @@ const EAT_CONSUME := 1
 const BEDREST_GOTO := 0
 const BEDREST_SLEEP := 1
 const BUILD_TRAVEL := 0
-const BUILD_WORK := 1
+const BUILD_STANCE := 1
+const BUILD_WORK := 2
 const CHOP_TRAVEL := 0
-const CHOP_WORK := 1
+const CHOP_STANCE := 1
+const CHOP_WORK := 2
 const HAUL_FETCH := 0
 const HAUL_DELIVER := 1
 const PHASE_NAMES := {
 	&"eat": ["goto", "consume"],
 	&"sleep": ["sleep"],
 	&"sleep_bed": ["goto", "sleep"],
-	&"build": ["travel", "work"],
+	&"build": ["travel", "position", "work"],
 	&"wander": ["wait", "stroll"],
-	&"chop": ["travel", "chop"],
+	&"chop": ["travel", "position", "chop"],
 	&"haul": ["fetch", "deliver"],
 }
 
@@ -88,11 +90,13 @@ var jitter := PackedVector2Array()
 var current_action := PackedInt32Array()
 var phase := PackedInt32Array()  # phase within the current activity
 var phase_timer := PackedInt32Array()  # scratch timer; resets on phase change
-var build_claims := PackedInt32Array()  # blueprint cell being worked, or -1
+var work_claims := PackedInt32Array()  # cell being worked (blueprint or tree), or -1
+var work_spots := PackedInt32Array()  # claimed stance cell beside the work, or -1
 var work_cooldowns := PackedInt32Array()  # no work re-pick until this tick (build/chop/haul)
 var carry_type := PackedInt32Array()  # item type in hands, or -1
 var carry_count := PackedInt32Array()  # how many of it
 var headings := PackedFloat32Array()  # stroll direction, persists across legs
+var facings := PackedVector2Array()  # unit vector faced: travel direction, or the work when planted
 var needs: Array[PackedFloat32Array] = []
 var last_scores := PackedFloat32Array()  # count * n_actions, row per pawn
 
@@ -119,7 +123,9 @@ func spawn(world: SimWorld, defs: AiDefs, n: int) -> void:
 	var _e9: int = current_action.resize(new_count)
 	var _e10: int = phase.resize(new_count)
 	var _e11: int = last_scores.resize(new_count * _n_actions)
-	var _e13: int = build_claims.resize(new_count)
+	var _e13: int = work_claims.resize(new_count)
+	var _e19: int = work_spots.resize(new_count)
+	var _e20: int = facings.resize(new_count)
 	var _e14: int = work_cooldowns.resize(new_count)
 	var _e17: int = carry_type.resize(new_count)
 	var _e18: int = carry_count.resize(new_count)
@@ -147,11 +153,13 @@ func spawn(world: SimWorld, defs: AiDefs, n: int) -> void:
 		current_action[i] = NO_ACTION
 		phase[i] = 0
 		phase_timer[i] = 0
-		build_claims[i] = -1
+		work_claims[i] = -1
+		work_spots[i] = -1
 		work_cooldowns[i] = 0
 		carry_type[i] = -1
 		carry_count[i] = 0
 		headings[i] = s.nextf() * TAU
+		facings[i] = Vector2(0.0, 1.0)  # toward the camera until they move
 		for nd: int in _n_needs:
 			# Staggered starting levels so the colony doesn't eat and sleep
 			# in lockstep.
@@ -335,7 +343,8 @@ func _exit_action(ctx: AiContext, i: int) -> void:
 	phase[i] = 0
 	phase_timer[i] = 0
 	targets[i] = positions[i]
-	build_claims[i] = -1
+	work_claims[i] = -1
+	work_spots[i] = -1
 	if carry_count[i] > 0:
 		ctx.items.scatter(ctx.world, _cell_of(ctx.world, positions[i]), carry_type[i], carry_count[i])
 	carry_type[i] = -1
@@ -434,61 +443,80 @@ func _sleep_bed_tick(ctx: AiContext, i: int, action: AiDefs.ActionDef, dt: float
 	return ACT_RUNNING
 
 
-## Builders work standing exactly one tile beside the blueprint — never on
-## it — and refuse walls that would seal them into a pocket. Blueprint
-## ghosts are scaffolding: pawns stand on them freely (solid fills need it),
-## but a cell is never built while anyone occupies it.
+## Builders work planted at the center of a tile beside the blueprint —
+## cardinal when the ground allows, never on the work itself — squared up
+## and facing it before the first swing (the stance the coming work
+## animations are drawn for). They refuse walls that would seal them into
+## a pocket. Blueprint ghosts are scaffolding: settlers stand on them
+## freely (solid fills need it), but a cell is never built while anyone
+## occupies it.
 func _build_tick(ctx: AiContext, i: int, dt: float) -> int:
-	var cell := _cell_of(ctx.world, positions[i])
-	# A live claim is the WORK-phase condition; it revalidates every tick
-	# because the world moves under builders (cancelled ghosts, walls
-	# built by others, our own arrival at a new frontier).
-	var claim := build_claims[i]
-	if claim >= 0 and (not ctx.blueprints.has_at(claim) or not _cells_adjacent(ctx.world, cell, claim)):
-		claim = -1
+	# A live claim revalidates every tick because the world moves under
+	# builders (cancelled ghosts, walls built by others, a stance walled
+	# off mid-approach).
+	var claim := work_claims[i]
+	if claim >= 0 and (not ctx.blueprints.has_at(claim) or not _stance_ok(ctx, i)):
+		claim = _drop_claim(i)
 	if claim < 0:
-		claim = _pick_adjacent_blueprint(ctx, cell)
-		build_claims[i] = claim
-	if phase[i] != (BUILD_WORK if claim >= 0 else BUILD_TRAVEL):
-		_set_phase(i, BUILD_WORK if claim >= 0 else BUILD_TRAVEL)
-
-	if phase[i] == BUILD_WORK:
-		targets[i] = positions[i]
-		if not ctx.blueprints.add_worker(claim):
+		claim = _pick_adjacent_blueprint(ctx, i)
+	if claim < 0:
+		# No workable job beside us: travel toward the build frontier,
+		# stopping one cell short of the goal (you can't build what you
+		# stand on). The arrival tick reports "nowhere further to go" —
+		# look around once more before giving up; the frontier may be at
+		# arm's length now.
+		if ctx.blueprint_field != null and _follow_field(ctx, i, ctx.blueprint_field, dt, true):
+			if phase[i] != BUILD_TRAVEL:
+				_set_phase(i, BUILD_TRAVEL)
+			return ACT_RUNNING
+		claim = _pick_adjacent_blueprint(ctx, i)
+		if claim < 0:
+			# Blocked or out of road: cool down so we don't statue in
+			# place on a stale field.
 			work_cooldowns[i] = ctx.tick + 45
-			return ACT_FAILED  # crowded this tick; re-decide
-		var mat := ctx.blueprints.material_at(claim)
-		var built := ctx.blueprints.add_work(claim, dt)
-		if built != SimWorld.STRUCT_NONE:
-			ctx.world.set_structure(claim, built, mat)
-			if built == SimWorld.STRUCT_WALL:
-				_displace_from(ctx, claim)
-				ctx.items.displace_from(ctx.world, claim)
-			# Stay on the job: clear the claim and pick the next adjacent
-			# frontier cell next tick. (Needs still preempt at the regular
-			# decide cadence.) Re-rolling life plans after every wall is
-			# how construction turns into a colony-wide relay race.
-			build_claims[i] = -1
+			return ACT_FAILED
+		return ACT_RUNNING  # stance walk starts next tick
+
+	if not _take_stance(ctx, i, dt):
+		if phase[i] != BUILD_STANCE:
+			_set_phase(i, BUILD_STANCE)
 		return ACT_RUNNING
-	# No workable job here: travel toward the build frontier, stopping one
-	# cell short of the goal (you can't build what you stand on). Blocked or
-	# out of road: cool down so we don't statue in place on a stale field.
-	if ctx.blueprint_field == null or not _follow_field(ctx, i, ctx.blueprint_field, dt, true):
+	if phase[i] != BUILD_WORK:
+		_set_phase(i, BUILD_WORK)
+	if not ctx.blueprints.add_worker(claim):
 		work_cooldowns[i] = ctx.tick + 45
-		return ACT_FAILED
+		return ACT_FAILED  # crowded this tick; re-decide
+	var mat := ctx.blueprints.material_at(claim)
+	var built := ctx.blueprints.add_work(claim, dt)
+	if built != SimWorld.STRUCT_NONE:
+		ctx.world.set_structure(claim, built, mat)
+		if built == SimWorld.STRUCT_WALL:
+			_displace_from(ctx, claim)
+			ctx.items.displace_from(ctx.world, claim)
+		# Stay on the job: clear the claim and pick the next adjacent
+		# frontier cell next tick. (Needs still preempt at the regular
+		# decide cadence.) Re-rolling life plans after every wall is
+		# how construction turns into a colony-wide relay race. Phase
+		# drops back to travel — "work" with no claim is a lie.
+		var _c := _drop_claim(i)
+		_set_phase(i, BUILD_TRAVEL)
 	return ACT_RUNNING
 
 
-## Adjacent blueprint with worker capacity that is safe to build: never one
-## someone is standing on; walls are checked against the pocket rule
-## (pretend it's built — can I still reach open ground from where I
-## stand?); the deepest candidate wins, so clusters complete inside-out.
-func _pick_adjacent_blueprint(ctx: AiContext, cell: int) -> int:
+## Adjacent blueprint with worker capacity that is safe to build, claimed
+## together with the stance it will be worked from: never one someone is
+## standing on; candidates offering no standable stance are skipped;
+## walls are checked against the pocket rule FROM THE STANCE (pretend
+## it's built — can I still reach open ground from where I'll stand?);
+## the deepest candidate wins, so clusters complete inside-out.
+func _pick_adjacent_blueprint(ctx: AiContext, i: int) -> int:
 	var w := ctx.world.width
+	var cell := _cell_of(ctx.world, positions[i])
 	@warning_ignore("integer_division")
 	var cy := cell / w
 	var cx := cell % w
 	var best := -1
+	var best_spot := -1
 	var best_depth := -1
 	for d: int in 8:
 		var nx := cx + FlowField.DX[d]
@@ -510,13 +538,21 @@ func _pick_adjacent_blueprint(ctx: AiContext, cell: int) -> int:
 			continue
 		if ctx.occupied.has(ncell):
 			continue
-		if int(ctx.blueprints.types[idx]) == SimWorld.STRUCT_WALL:
-			if Reachability.pocket_size(ctx.world, cell, ncell, 48) < 48:
-				continue
+		var wall := int(ctx.blueprints.types[idx]) == SimWorld.STRUCT_WALL
+		var spot := _pick_work_spot(ctx, i, ncell, wall)
+		if spot < 0:
+			continue
 		var cand_depth := _local_depth(ctx, ncell)
 		if cand_depth > best_depth:
 			best_depth = cand_depth
 			best = ncell
+			best_spot = spot
+	work_claims[i] = best
+	work_spots[i] = best_spot
+	if best_spot >= 0:
+		# Reserve immediately: settlers deciding later this same tick must
+		# not double-book the stance (tick-start occupancy is stale here).
+		ctx.occupied[best_spot] = true
 	return best
 
 
@@ -552,14 +588,6 @@ func _step_off_blueprints(ctx: AiContext, i: int, cell: int, dt: float) -> bool:
 		var _arrived := _move_toward_target(i, speeds[i] * dt)
 		return true
 	return false
-
-
-static func _cells_adjacent(world: SimWorld, a: int, b: int) -> bool:
-	var w := world.width
-	@warning_ignore("integer_division")
-	var dy := absi(a / w - b / w)
-	var dx := absi(a % w - b % w)
-	return maxi(dx, dy) == 1
 
 
 ## Safety net: a pawn can transiently end up inside fresh construction
@@ -603,30 +631,151 @@ func _displace_from(ctx: AiContext, cell: int) -> void:
 				break
 
 
-## Chopping: walk the chop field to a planned tree, then work it down.
-## Trees are walkable, so the chopper stands on the tree's cell (good
-## enough until chop animations land). Felling scatters the yield where
-## the tree stood — the sim's first item spawn.
+## Chopping: walk the chop field to a planned tree, plant at the center
+## of an adjacent tile — cardinal when the ground allows, never on the
+## tree; an axe swings AT something — face it, and work it down. Felling
+## scatters the yield where the tree stood — the sim's first item spawn.
 func _chop_tick(ctx: AiContext, i: int, dt: float) -> int:
-	var cell := _cell_of(ctx.world, positions[i])
-	var on_planned_tree := ctx.trees.is_designated(cell)
-	if phase[i] != (CHOP_WORK if on_planned_tree else CHOP_TRAVEL):
-		_set_phase(i, CHOP_WORK if on_planned_tree else CHOP_TRAVEL)
-
-	if phase[i] == CHOP_WORK:
-		targets[i] = positions[i]
-		if not ctx.trees.add_worker(cell):
+	var claim := work_claims[i]
+	if claim >= 0 and (not ctx.trees.is_designated(claim) or not _stance_ok(ctx, i)):
+		claim = _drop_claim(i)
+	if claim < 0:
+		claim = _pick_adjacent_tree(ctx, i)
+	if claim < 0:
+		# Travel stops one cell short of entering the tree; the arrival
+		# tick reports "nowhere further to go" — look around once more
+		# before giving up.
+		if ctx.chop_field != null and _follow_field(ctx, i, ctx.chop_field, dt, true):
+			if phase[i] != CHOP_TRAVEL:
+				_set_phase(i, CHOP_TRAVEL)
+			return ACT_RUNNING
+		claim = _pick_adjacent_tree(ctx, i)
+		if claim < 0:
 			work_cooldowns[i] = ctx.tick + 45
-			return ACT_FAILED  # someone else is on this tree; re-decide
-		var wood := ctx.trees.add_work(ctx.world, cell, dt)
-		if wood > 0:
-			ctx.items.scatter(ctx.world, cell, Items.WOOD, wood)
-			return ACT_DONE  # tree's down; re-decide (often: the next tree)
+			return ACT_FAILED
+		return ACT_RUNNING  # stance walk starts next tick
+
+	if not _take_stance(ctx, i, dt):
+		if phase[i] != CHOP_STANCE:
+			_set_phase(i, CHOP_STANCE)
 		return ACT_RUNNING
-	if ctx.chop_field == null or not _follow_field(ctx, i, ctx.chop_field, dt):
+	if phase[i] != CHOP_WORK:
+		_set_phase(i, CHOP_WORK)
+	if not ctx.trees.add_worker(claim):
 		work_cooldowns[i] = ctx.tick + 45
-		return ACT_FAILED
+		return ACT_FAILED  # someone else is on this tree; re-decide
+	var wood := ctx.trees.add_work(ctx.world, claim, dt)
+	if wood > 0:
+		ctx.items.scatter(ctx.world, claim, Items.WOOD, wood)
+		return ACT_DONE  # tree's down; re-decide (often: the next tree)
 	return ACT_RUNNING
+
+
+## A designated tree workable from here: the cell underfoot first (chop
+## plans land under standing settlers — they step aside, not away), then
+## the eight neighbors in scan order. Candidates offering no standable
+## stance are skipped. Claims claim the stance with them.
+func _pick_adjacent_tree(ctx: AiContext, i: int) -> int:
+	var w := ctx.world.width
+	var cell := _cell_of(ctx.world, positions[i])
+	@warning_ignore("integer_division")
+	var cy := cell / w
+	var cx := cell % w
+	for k: int in 9:
+		var ncell := cell if k == 0 else (cy + FlowField.DY[k - 1]) * w + cx + FlowField.DX[k - 1]
+		if not ctx.trees.is_designated(ncell):
+			continue
+		var idx: int = ctx.trees.cell_to_tree.get(ncell, -1)
+		if idx < 0 or ctx.trees.workers[idx] >= Trees.MAX_WORKERS_PER_TREE:
+			continue
+		var spot := _pick_work_spot(ctx, i, ncell, false)
+		if spot < 0:
+			continue
+		work_claims[i] = ncell
+		work_spots[i] = spot
+		ctx.occupied[spot] = true  # same-tick pickers must not double-book
+		return ncell
+	return -1
+
+
+# --- work stances ---------------------------------------------------------
+
+
+## The spot to stand while working a cell: the center of an adjacent
+## walkable tile, cardinals before corners — a squared-up worker is the
+## stance the work animations are drawn for; the diagonal is the
+## fallback when geometry allows nothing else. Must be reachable by a
+## straight walk from here, not reserved by another settler, and — for
+## walls — never a spot the finished wall would seal into a pocket.
+func _pick_work_spot(ctx: AiContext, i: int, work_cell: int, pocket_rule: bool) -> int:
+	var w := ctx.world.width
+	@warning_ignore("integer_division")
+	var wy := work_cell / w
+	var wx := work_cell % w
+	var my_cell := _cell_of(ctx.world, positions[i])
+	var best := -1
+	var best_key := INF
+	for d: int in 8:
+		var nx := wx + FlowField.DX[d]
+		var ny := wy + FlowField.DY[d]
+		if not ctx.world.is_walkable(nx, ny):
+			continue
+		var ncell := ny * w + nx
+		if ncell != my_cell and ctx.occupied.has(ncell):
+			continue
+		var center := Vector2(nx + 0.5, ny + 0.5)
+		if not _line_walkable(ctx.world, positions[i], center):
+			continue
+		if pocket_rule and Reachability.pocket_size(ctx.world, ncell, work_cell, 48) < 48:
+			continue
+		# Cardinal spots outrank corners outright; distance breaks ties
+		# within each class (nearest first, scan order settles the rest).
+		var key := (1000.0 if d >= 4 else 0.0) + positions[i].distance_squared_to(center)
+		if key < best_key:
+			best_key = key
+			best = ncell
+	return best
+
+
+## Walk to the claimed stance's center; true once planted there, squared
+## up and facing the work. No jitter on this target — the coming work
+## animations anchor on tile centers.
+func _take_stance(ctx: AiContext, i: int, dt: float) -> bool:
+	var center := _cell_center(ctx.world, work_spots[i])
+	targets[i] = center
+	if not _move_toward_target(i, speeds[i] * dt):
+		return false
+	positions[i] = center  # kill the last sub-arrival sliver: plant clean
+	facings[i] = (_cell_center(ctx.world, work_claims[i]) - center).normalized()
+	return true
+
+
+## The stance survives while its tile is standable and still reachable by
+## the straight walk we committed to (walls can land mid-approach).
+func _stance_ok(ctx: AiContext, i: int) -> bool:
+	var spot := work_spots[i]
+	if spot < 0:
+		return false
+	var w := ctx.world.width
+	@warning_ignore("integer_division")
+	var sy := spot / w
+	var sx := spot % w
+	if not ctx.world.is_walkable(sx, sy):
+		return false
+	return _line_walkable(ctx.world, positions[i], Vector2(sx + 0.5, sy + 0.5))
+
+
+## Release the work claim and its stance together (they live and die as a
+## pair). Returns -1 so callers can reassign in one line.
+func _drop_claim(i: int) -> int:
+	work_claims[i] = -1
+	work_spots[i] = -1
+	return -1
+
+
+static func _cell_center(world: SimWorld, cell: int) -> Vector2:
+	@warning_ignore("integer_division")
+	return Vector2(cell % world.width + 0.5, cell / world.width + 0.5)
 
 
 ## Hauling: fetch wood from the nearest ground stack, carry it to the
@@ -751,7 +900,9 @@ func _follow_field(
 		if remaining <= 0.0:
 			return true
 		var step := minf(remaining, dist)
-		positions[i] = pos + to_target * (step / dist)
+		var dir := to_target / dist
+		positions[i] = pos + dir * step
+		facings[i] = dir
 		remaining -= step
 	return true
 
@@ -764,7 +915,9 @@ func _move_toward_target(i: int, max_step: float) -> bool:
 	if dist <= ARRIVE_DISTANCE:
 		return true
 	var step := minf(max_step, dist)
-	positions[i] = pos + to_target * (step / dist)
+	var dir := to_target / dist
+	positions[i] = pos + dir * step
+	facings[i] = dir
 	return dist - step <= ARRIVE_DISTANCE
 
 
